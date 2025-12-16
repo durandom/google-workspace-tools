@@ -2,6 +2,7 @@
 
 import csv
 import io
+import json
 import re
 from pathlib import Path
 from typing import Any, cast
@@ -123,7 +124,22 @@ class GoogleDriveExporter:
 
                 logger.info("Running OAuth flow for new credentials")
                 flow = InstalledAppFlow.from_client_secrets_file(str(self.config.credentials_path), self.config.scopes)
-                creds = flow.run_local_server(port=0)
+
+                # Check credential type
+                try:
+                    with open(self.config.credentials_path) as f:
+                        creds_data = json.load(f)
+                        if "installed" in creds_data:
+                            raise ValueError(
+                                "Wrong kind of credentials file found (Desktop instead of Web application).\n"
+                                "Please create Web application credentials with authorized redirect URI:\n"
+                                "http://localhost:47621/\n\n"
+                                "https://console.cloud.google.com/apis/credentials"
+                            )
+                except (json.JSONDecodeError, KeyError):
+                    pass  # Let the OAuth flow handle invalid credential files
+
+                creds = flow.run_local_server(port=47621)
 
             # Save credentials for next run
             self.config.token_path.parent.mkdir(parents=True, exist_ok=True)

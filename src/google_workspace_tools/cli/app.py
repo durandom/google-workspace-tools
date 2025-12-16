@@ -224,6 +224,9 @@ def auth(
         console.print(f"[red]Error: Credentials file not found: {credentials}[/red]")
         console.print("\n[dim]Download OAuth credentials from Google Cloud Console:[/dim]")
         console.print("[dim]https://console.cloud.google.com/apis/credentials[/dim]")
+        console.print("\n[yellow]Important:[/yellow] Create a [cyan]Web application[/cyan] credential (not Desktop)")
+        console.print("[dim]When configuring, add this authorized redirect URI:[/dim]")
+        console.print("[cyan]http://localhost:47621/[/cyan]")
         raise typer.Exit(1)
 
     config = GoogleDriveExporterConfig(
