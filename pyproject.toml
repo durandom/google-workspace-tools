@@ -1,0 +1,95 @@
+[project]
+name = "google-workspace-tools"
+version = "0.1.0"
+description = "Google Workspace document export toolkit with CLI and optional AI agent integration"
+readme = "README.md"
+license = { text = "Apache-2.0" }
+authors = [
+    { name = "Marcel Hild", email = "hild@b4mad.net" }
+]
+requires-python = ">=3.11"
+
+dependencies = [
+    # Core Google API dependencies
+    "google-auth-oauthlib>=1.2.2",
+    "google-api-python-client>=2.176.0",
+    "google-auth-httplib2>=0.2.0",
+    # HTML to Markdown conversion
+    "html-to-markdown>=1.8.0",
+    # Configuration and validation
+    "pydantic>=2.11.5",
+    "pydantic-settings>=2.0.0",
+    # Logging
+    "loguru>=0.7.3",
+    # CLI framework
+    "typer>=0.9.0",
+    "rich>=13.0.0",
+    # YAML config support
+    "PyYAML>=6.0.0",
+]
+
+# Optional dependencies for Agno toolkit
+[project.optional-dependencies]
+agno = [
+    "agno>=2.0.0,<3.0",
+]
+
+# CLI entry point
+[project.scripts]
+gwt = "google_workspace_tools:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# Development dependencies
+[dependency-groups]
+dev = [
+    "ruff>=0.11.12",
+    "pytest>=8.4.0",
+    "pytest-cov>=6.1.1",
+    "pre-commit>=3.0.0",
+    "mypy>=1.16.1",
+    "types-PyYAML",
+]
+docs = [
+    "pdoc>=14.0.0",
+]
+
+# Ruff configuration
+[tool.ruff]
+line-length = 120
+src = ["src", "tests"]
+target-version = "py311"
+
+[tool.ruff.lint]
+fixable = ["ALL"]
+ignore = ["B008"]
+select = ["E", "F", "W", "I", "B", "UP", "PT", "SIM"]
+
+[tool.ruff.format]
+indent-style = "space"
+line-ending = "auto"
+quote-style = "double"
+
+# Pytest configuration
+[tool.pytest.ini_options]
+addopts = "-v --tb=short --strict-markers"
+testpaths = ["tests"]
+markers = [
+    "unit: Unit tests",
+    "integration: Integration tests",
+    "e2e: End-to-end tests",
+]
+
+# Coverage
+[tool.coverage.run]
+source = ["src"]
+omit = ["tests/*"]
+
+# MyPy
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
