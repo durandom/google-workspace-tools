@@ -1,7 +1,7 @@
 """Configuration models for Google Workspace Tools."""
 
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -39,6 +39,11 @@ class GoogleDriveExporterConfig(BaseModel):
             "https://www.googleapis.com/auth/spreadsheets.readonly",
             "https://www.googleapis.com/auth/presentations.readonly",
         ]
+    )
+    # Frontmatter configuration
+    enable_frontmatter: bool = Field(default=False, description="Enable YAML frontmatter in markdown files")
+    frontmatter_fields: dict[str, Any] = Field(
+        default_factory=dict, description="Custom frontmatter fields to inject"
     )
 
     @field_validator("target_directory", mode="before")

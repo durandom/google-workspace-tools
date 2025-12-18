@@ -2,9 +2,10 @@
 
 import json
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated, Any
 
 import typer
+import yaml
 from loguru import logger
 from rich.console import Console
 from rich.table import Table
@@ -43,7 +44,7 @@ def main_callback(
         ),
     ] = 0,
     log_level: Annotated[
-        Optional[str],
+        str | None,
         typer.Option("--log-level", help="Set log level (DEBUG, INFO, WARNING, ERROR)"),
     ] = None,
     version: Annotated[
@@ -82,9 +83,9 @@ def download(
         typer.Argument(help="Google Drive URLs or document IDs to download"),
     ],
     output: Annotated[
-        Path,
-        typer.Option("--output", "-o", help="Output directory"),
-    ] = Path("exports"),
+        Path | None,
+        typer.Option("--output", "-o", help="Output directory or full path (with extension for single document)"),
+    ] = None,
     format: Annotated[
         str,
         typer.Option("--format", "-f", help="Export format (md, pdf, docx, html, xlsx, csv, pptx, etc.)"),
@@ -97,6 +98,20 @@ def download(
         Path,
         typer.Option("--credentials", "-c", help="Path to Google OAuth credentials file"),
     ] = Path(".client_secret.googleusercontent.com.json"),
+    frontmatter: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--frontmatter", "-m", help="Add frontmatter field (format: key=value). Can be used multiple times."
+        ),
+    ] = None,
+    frontmatter_file: Annotated[
+        Path | None,
+        typer.Option("--frontmatter-file", help="Path to YAML file containing frontmatter fields"),
+    ] = None,
+    enable_frontmatter: Annotated[
+        bool,
+        typer.Option("--enable-frontmatter", help="Enable YAML frontmatter in markdown files"),
+    ] = False,
 ) -> None:
     """Download one or more Google Drive documents.
 
@@ -104,31 +119,89 @@ def download(
         gwt download https://docs.google.com/document/d/abc123/edit
         gwt download abc123 def456 -f pdf -o ./downloads
         gwt download https://docs.google.com/.../edit -d 2  # Follow links 2 levels deep
+        gwt download URL -o meetings/notes.md --enable-frontmatter -m "date=2024-01-15" -m "type=meeting"
+        gwt download URL -o notes.md --enable-frontmatter --frontmatter-file meta.yaml
     """
+    # Parse frontmatter fields
+    frontmatter_fields: dict[str, Any] = {}
+
+    # Load from file if provided
+    if frontmatter_file:
+        if not frontmatter_file.exists():
+            console.print(f"[red]Error: Frontmatter file not found: {frontmatter_file}[/red]")
+            raise typer.Exit(1)
+        try:
+            with open(frontmatter_file) as f:
+                file_data = yaml.safe_load(f)
+                if isinstance(file_data, dict):
+                    frontmatter_fields.update(file_data)
+        except Exception as e:
+            console.print(f"[red]Error loading frontmatter file: {e}[/red]")
+            raise typer.Exit(1)
+
+    # Parse command-line frontmatter options
+    if frontmatter:
+        for item in frontmatter:
+            if "=" not in item:
+                console.print(f"[yellow]Warning: Invalid frontmatter format '{item}'. Expected key=value[/yellow]")
+                continue
+            key, value = item.split("=", 1)
+            frontmatter_fields[key.strip()] = value.strip()
+
+    # Determine if output is a directory or full path
+    output_dir = Path("exports")
+    output_path = None
+    is_single_document = len(documents) == 1
+
+    if output:
+        if is_single_document and output.suffix:
+            # Full path provided for single document
+            output_path = output
+            output_dir = output.parent
+        else:
+            # Directory path
+            output_dir = output
+
     config = GoogleDriveExporterConfig(
         credentials_path=credentials,
-        target_directory=output,
+        target_directory=output_dir,
         export_format=format,  # type: ignore[arg-type]
         follow_links=depth > 0,
         link_depth=depth,
+        enable_frontmatter=enable_frontmatter or bool(frontmatter_fields),
+        frontmatter_fields=frontmatter_fields,
     )
 
     exporter = GoogleDriveExporter(config)
 
-    console.print(f"[bold]Downloading {len(documents)} document(s) to {output}[/bold]")
-    console.print(f"Format: [cyan]{format}[/cyan], Link depth: [cyan]{depth}[/cyan]\n")
+    console.print(f"[bold]Downloading {len(documents)} document(s) to {output_dir}[/bold]")
+    console.print(f"Format: [cyan]{format}[/cyan], Link depth: [cyan]{depth}[/cyan]")
+    if config.enable_frontmatter:
+        console.print(f"Frontmatter: [cyan]enabled[/cyan] ({len(frontmatter_fields)} custom fields)")
+    console.print()
 
     try:
-        results = exporter.export_multiple(documents)
-
-        if results:
-            console.print(f"\n[green]Successfully exported {len(results)} document(s)[/green]")
-            for doc_id, files in results.items():
-                console.print(f"  [dim]{doc_id}[/dim]")
-                for fmt, path in files.items():
-                    console.print(f"    {fmt}: [blue]{path}[/blue]")
+        if is_single_document and output_path:
+            # Export single document with custom path
+            result = exporter.export_document(documents[0], output_path=output_path)
+            if result:
+                console.print("\n[green]Successfully exported document[/green]")
+                for fmt, path in result.items():
+                    console.print(f"  {fmt}: [blue]{path}[/blue]")
+            else:
+                console.print("[yellow]Document was not exported[/yellow]")
         else:
-            console.print("[yellow]No documents were exported[/yellow]")
+            # Export multiple documents
+            results = exporter.export_multiple(documents)
+
+            if results:
+                console.print(f"\n[green]Successfully exported {len(results)} document(s)[/green]")
+                for doc_id, files in results.items():
+                    console.print(f"  [dim]{doc_id}[/dim]")
+                    for fmt, path in files.items():
+                        console.print(f"    {fmt}: [blue]{path}[/blue]")
+            else:
+                console.print("[yellow]No documents were exported[/yellow]")
 
     except FileNotFoundError as e:
         console.print(f"[red]Error: {e}[/red]")

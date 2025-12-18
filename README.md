@@ -6,6 +6,8 @@ A Python toolkit for exporting and managing Google Drive documents with CLI and 
 
 - **Multi-format Export**: Export Google Docs, Sheets, and Slides to various formats (PDF, DOCX, Markdown, CSV, XLSX, PPTX, etc.)
 - **HTML to Markdown**: Automatic conversion of Google Docs to clean Markdown
+- **Frontmatter Support**: Add YAML frontmatter to markdown files with custom metadata
+- **Custom Output Paths**: Export to specific file paths with custom names
 - **Link Following**: Recursively export linked documents up to configurable depth
 - **Mirror Configuration**: Batch export documents from a configuration file
 - **CLI Tool**: Full-featured command-line interface (`gwt`)
@@ -48,6 +50,68 @@ gwt whoami
 gwt formats -t spreadsheet
 ```
 
+### Frontmatter Support
+
+Add YAML frontmatter to markdown files for integration with static site generators, note-taking apps, or automation workflows:
+
+```bash
+# Enable frontmatter with custom fields
+gwt download URL -o meetings/2024-01-15.md --enable-frontmatter \
+  -m "date=2024-01-15" \
+  -m "meeting_type=weekly-sync" \
+  -m "tags=ai,planning"
+
+# Load frontmatter from YAML file
+cat > metadata.yaml <<EOF
+date: 2024-01-15
+meeting_type: weekly-sync
+tags:
+  - ai
+  - planning
+attendees:
+  - Alice
+  - Bob
+EOF
+
+gwt download URL -o notes.md --frontmatter-file metadata.yaml
+```
+
+**Auto-injected fields** (always included when frontmatter is enabled):
+- `title`: Document title from Google Drive
+- `source`: Original Google Drive URL
+- `synced_at`: ISO timestamp when document was downloaded
+
+**Output example:**
+```markdown
+---
+title: Weekly AI Sync - Jan 15
+source: https://docs.google.com/document/d/abc123/edit
+synced_at: 2024-01-15T10:30:00Z
+date: 2024-01-15
+meeting_type: weekly-sync
+tags:
+  - ai
+  - planning
+---
+
+# Meeting Notes
+...document content...
+```
+
+**Custom fields override auto fields** - if you provide a `title` in frontmatter, it will replace the auto-detected title.
+
+### Custom Output Paths
+
+Export to specific file paths instead of using auto-generated names:
+
+```bash
+# Single document to specific path
+gwt download URL -o meetings/2024/jan/weekly-sync.md
+
+# Multiple documents to directory (standard behavior)
+gwt download URL1 URL2 -o meetings/archive/
+```
+
 ### Library Usage
 
 ```python
@@ -69,6 +133,22 @@ results = exporter.export_document("https://docs.google.com/document/d/abc123/ed
 config.follow_links = True
 config.link_depth = 2
 exporter.export_document("https://docs.google.com/document/d/abc123/edit")
+
+# Export with frontmatter
+config_with_frontmatter = GoogleDriveExporterConfig(
+    export_format="md",
+    enable_frontmatter=True,
+    frontmatter_fields={
+        "date": "2024-01-15",
+        "meeting_type": "weekly-sync",
+        "tags": ["ai", "planning"]
+    }
+)
+exporter = GoogleDriveExporter(config_with_frontmatter)
+exporter.export_document(
+    "https://docs.google.com/document/d/abc123/edit",
+    output_path=Path("meetings/2024-01-15.md")
+)
 
 # Mirror from config file
 exporter.mirror_documents(Path("sources.txt"))

@@ -141,3 +141,67 @@ class TestResetProcessedDocs:
         # Reset
         exporter.reset_processed_docs()
         assert len(exporter._processed_docs) == 0
+
+
+class TestFrontmatter:
+    """Tests for frontmatter generation."""
+
+    def test_generate_frontmatter_basic(self):
+        """Test basic frontmatter generation with auto fields only."""
+        config = GoogleDriveExporterConfig(enable_frontmatter=True)
+        exporter = GoogleDriveExporter(config)
+
+        frontmatter = exporter._generate_frontmatter(
+            document_id="abc123",
+            title="Test Document",
+            source_url="https://docs.google.com/document/d/abc123",
+            doc_type=DocumentType.DOCUMENT,
+        )
+
+        assert frontmatter.startswith("---\n")
+        assert frontmatter.endswith("---\n\n")
+        assert "title: Test Document" in frontmatter
+        assert "source: https://docs.google.com/document/d/abc123" in frontmatter
+        assert "synced_at:" in frontmatter
+
+    def test_generate_frontmatter_with_custom_fields(self):
+        """Test frontmatter generation with custom fields."""
+        config = GoogleDriveExporterConfig(
+            enable_frontmatter=True, frontmatter_fields={"date": "2024-01-15", "meeting_type": "weekly-sync"}
+        )
+        exporter = GoogleDriveExporter(config)
+
+        frontmatter = exporter._generate_frontmatter(
+            document_id="abc123",
+            title="Meeting Notes",
+            source_url="https://docs.google.com/document/d/abc123",
+            doc_type=DocumentType.DOCUMENT,
+        )
+
+        assert "title: Meeting Notes" in frontmatter
+        assert "date: '2024-01-15'" in frontmatter or "date: 2024-01-15" in frontmatter
+        assert "meeting_type: weekly-sync" in frontmatter
+
+    def test_custom_fields_override_auto_fields(self):
+        """Test that custom fields override auto-generated fields."""
+        config = GoogleDriveExporterConfig(
+            enable_frontmatter=True, frontmatter_fields={"title": "Custom Title", "custom_field": "value"}
+        )
+        exporter = GoogleDriveExporter(config)
+
+        frontmatter = exporter._generate_frontmatter(
+            document_id="abc123",
+            title="Auto Title",
+            source_url="https://docs.google.com/document/d/abc123",
+            doc_type=DocumentType.DOCUMENT,
+        )
+
+        assert "title: Custom Title" in frontmatter
+        assert "title: Auto Title" not in frontmatter
+        assert "custom_field: value" in frontmatter
+
+    def test_frontmatter_disabled_by_default(self):
+        """Test that frontmatter is disabled by default in config."""
+        config = GoogleDriveExporterConfig()
+        assert config.enable_frontmatter is False
+        assert config.frontmatter_fields == {}

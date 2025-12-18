@@ -4,11 +4,13 @@ import csv
 import io
 import json
 import re
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 from urllib.parse import parse_qs, urlparse
 
 import google.auth.transport.requests
+import yaml
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
@@ -162,6 +164,36 @@ class GoogleDriveExporter:
         except Exception as e:
             logger.error(f"Failed to get user info: {e}")
             return {}
+
+    def _generate_frontmatter(
+        self, document_id: str, title: str, source_url: str, doc_type: DocumentType
+    ) -> str:
+        """Generate YAML frontmatter for markdown files.
+
+        Args:
+            document_id: Google Drive document ID.
+            title: Document title.
+            source_url: Original Google Drive URL.
+            doc_type: Document type.
+
+        Returns:
+            YAML frontmatter string with --- delimiters.
+        """
+        # Auto-injected fields (our recommendation)
+        frontmatter_data: dict[str, Any] = {
+            "title": title,
+            "source": source_url,
+            "synced_at": datetime.now(UTC).isoformat(),
+        }
+
+        # Merge with custom frontmatter fields (custom fields override auto fields)
+        if self.config.frontmatter_fields:
+            frontmatter_data.update(self.config.frontmatter_fields)
+
+        # Generate YAML
+        yaml_content = yaml.dump(frontmatter_data, default_flow_style=False, allow_unicode=True, sort_keys=False)
+
+        return f"---\n{yaml_content}---\n\n"
 
     def extract_document_id(self, url_or_id: str) -> str:
         """Extract document ID from URL or return the ID if already provided.
@@ -480,7 +512,13 @@ class GoogleDriveExporter:
             raise
 
     def _export_single_format(
-        self, document_id: str, format_key: str, output_path: Path, doc_type: DocumentType | None = None
+        self,
+        document_id: str,
+        format_key: str,
+        output_path: Path,
+        doc_type: DocumentType | None = None,
+        title: str = "untitled",
+        source_url: str = "",
     ) -> bool:
         """Export document in a single format.
 
@@ -489,6 +527,8 @@ class GoogleDriveExporter:
             format_key: Format key from EXPORT_FORMATS.
             output_path: Path to save the exported file.
             doc_type: Document type to determine appropriate export formats.
+            title: Document title for frontmatter.
+            source_url: Source URL for frontmatter.
 
         Returns:
             True if export successful, False otherwise.
@@ -544,6 +584,13 @@ class GoogleDriveExporter:
 
                 # Write markdown to file
                 with open(output_path, "w", encoding="utf-8") as f:
+                    # Add frontmatter if enabled
+                    if self.config.enable_frontmatter:
+                        url = source_url or f"https://docs.google.com/document/d/{document_id}"
+                        frontmatter = self._generate_frontmatter(
+                            document_id, title, url, doc_type or DocumentType.DOCUMENT
+                        )
+                        f.write(frontmatter)
                     f.write(markdown_content)
             else:
                 # Write binary data for other formats
@@ -705,13 +752,18 @@ class GoogleDriveExporter:
             return False
 
     def export_document(
-        self, document_id: str, output_name: str | None = None, current_depth: int = 0
+        self,
+        document_id: str,
+        output_name: str | None = None,
+        output_path: Path | None = None,
+        current_depth: int = 0,
     ) -> dict[str, Path]:
         """Export a Google Drive document.
 
         Args:
             document_id: Google Drive document ID or URL.
-            output_name: Optional custom output name (without extension).
+            output_name: Optional custom output name (without extension). Ignored if output_path is provided.
+            output_path: Optional full output path including extension. Overrides output_name and target_directory.
             current_depth: Current recursion depth for link following.
 
         Returns:
@@ -792,6 +844,13 @@ class GoogleDriveExporter:
             formats_to_export.append("html")
             logger.debug("Added HTML format for link extraction")
 
+        # Build source URL for frontmatter
+        source_url = f"https://docs.google.com/document/d/{document_id}"
+        if doc_type == DocumentType.SPREADSHEET:
+            source_url = f"https://docs.google.com/spreadsheets/d/{document_id}"
+        elif doc_type == DocumentType.PRESENTATION:
+            source_url = f"https://docs.google.com/presentation/d/{document_id}"
+
         # Export document - files go directly in target directory
         exported_files = {}
         for format_key in formats_to_export:
@@ -812,15 +871,22 @@ class GoogleDriveExporter:
                     continue
                 export_format = self.DOCUMENT_EXPORT_FORMATS[format_key]
 
-            # Create filename - always use clean title for primary export
-            base_filename = safe_title
-            output_path = self.config.target_directory / f"{base_filename}.{export_format.extension}"
+            # Determine output path
+            if output_path and len(formats_to_export) == 1:
+                # Custom output path provided and we're exporting a single format
+                file_output_path = output_path
+            else:
+                # Generate path from title and target directory
+                base_filename = safe_title
+                file_output_path = self.config.target_directory / f"{base_filename}.{export_format.extension}"
 
             # If file exists, just overwrite it (mirror behavior should update existing files)
             # This handles the common case where we're re-running a mirror operation
 
-            if self._export_single_format(document_id, format_key, output_path, doc_type):
-                exported_files[format_key] = output_path
+            if self._export_single_format(
+                document_id, format_key, file_output_path, doc_type, title=doc_title, source_url=source_url
+            ):
+                exported_files[format_key] = file_output_path
 
         # For spreadsheets, also export all sheets as individual CSV files
         if doc_type == DocumentType.SPREADSHEET:
