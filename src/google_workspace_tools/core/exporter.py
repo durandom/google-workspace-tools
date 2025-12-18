@@ -580,7 +580,10 @@ class GoogleDriveExporter:
             if format_key == "md":
                 # Convert HTML to Markdown
                 html_content = fh.getvalue().decode("utf-8")
-                markdown_content = convert_to_markdown(html_content)
+                markdown_content = convert_to_markdown(
+                    html_content,
+                    extract_metadata=False,  # Disable auto-frontmatter from HTML meta tags
+                )
 
                 # Write markdown to file
                 with open(output_path, "w", encoding="utf-8") as f:
