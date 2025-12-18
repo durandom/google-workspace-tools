@@ -5,7 +5,8 @@ A Python toolkit for exporting and managing Google Drive documents with CLI and 
 ## Features
 
 - **Multi-format Export**: Export Google Docs, Sheets, and Slides to various formats (PDF, DOCX, Markdown, CSV, XLSX, PPTX, etc.)
-- **HTML to Markdown**: Automatic conversion of Google Docs to clean Markdown
+- **HTML to Markdown**: Automatic conversion of Google Docs to clean Markdown (using html-to-markdown 2.14+)
+- **Spreadsheet → Markdown**: Export Google Sheets as LLM-optimized markdown tables (using Microsoft MarkItDown)
 - **Frontmatter Support**: Add YAML frontmatter to markdown files with custom metadata
 - **Custom Output Paths**: Export to specific file paths with custom names
 - **Link Following**: Recursively export linked documents up to configurable depth
@@ -100,6 +101,53 @@ tags:
 
 **Custom fields override auto fields** - if you provide a `title` in frontmatter, it will replace the auto-detected title.
 
+### Spreadsheet Export Options (LLM-Optimized)
+
+Google Sheets can be exported as Markdown tables optimized for LLM consumption using Microsoft's MarkItDown library:
+
+```bash
+# Export spreadsheet as single markdown file with all sheets (default)
+gwt download SPREADSHEET_URL -f md
+
+# Export each sheet as separate markdown file
+gwt download SPREADSHEET_URL -f md -s separate
+
+# Legacy CSV export (one CSV per sheet)
+gwt download SPREADSHEET_URL -f md -s csv
+
+# Control intermediate XLSX file retention
+gwt download SPREADSHEET_URL -f md --keep-xlsx    # Keep (default)
+gwt download SPREADSHEET_URL -f md --no-keep-xlsx  # Remove after conversion
+```
+
+**Export modes:**
+- **`combined`** (default): Single `.md` file with all sheets as H2 sections with markdown tables
+- **`separate`**: Each sheet exported as individual `.md` file in a `{name}_sheets/` directory
+- **`csv`**: Legacy mode - individual CSV files (loses formatting)
+
+**Example output (combined mode):**
+```markdown
+## Sales Data
+
+| Product | Q1 | Q2 | Q3 | Q4 |
+|---------|----|----|----|----|
+| Widget A | 100 | 150 | 200 | 175 |
+| Widget B | 50 | 75 | 100 | 125 |
+
+## Summary
+
+| Metric | Value |
+|--------|-------|
+| Total Revenue | $450,000 |
+| Growth Rate | 23% |
+```
+
+**Why markdown for spreadsheets?**
+- **Lower token count**: Research shows Markdown uses significantly fewer tokens than HTML/XML for LLMs
+- **Better structure**: Tables preserved in LLM-friendly format
+- **Multi-sheet support**: All sheets in one context-ready document
+- **Intermediate XLSX preserved**: Keep the original Excel file for manual review
+
 ### Custom Output Paths
 
 Export to specific file paths instead of using auto-generated names:
@@ -149,6 +197,15 @@ exporter.export_document(
     "https://docs.google.com/document/d/abc123/edit",
     output_path=Path("meetings/2024-01-15.md")
 )
+
+# Export spreadsheet as markdown (LLM-optimized)
+spreadsheet_config = GoogleDriveExporterConfig(
+    export_format="md",
+    spreadsheet_export_mode="combined",  # or "separate", "csv"
+    keep_intermediate_xlsx=True,  # Keep XLSX file
+)
+exporter = GoogleDriveExporter(spreadsheet_config)
+exporter.export_document("https://docs.google.com/spreadsheets/d/xyz789/edit")
 
 # Mirror from config file
 exporter.mirror_documents(Path("sources.txt"))

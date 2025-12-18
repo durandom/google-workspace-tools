@@ -112,6 +112,18 @@ def download(
         bool,
         typer.Option("--enable-frontmatter", help="Enable YAML frontmatter in markdown files"),
     ] = False,
+    spreadsheet_mode: Annotated[
+        str,
+        typer.Option(
+            "--spreadsheet-mode",
+            "-s",
+            help="Spreadsheet export mode: 'combined' (single .md), 'separate' (one .md per sheet), 'csv' (legacy)",
+        ),
+    ] = "combined",
+    keep_xlsx: Annotated[
+        bool,
+        typer.Option("--keep-xlsx", help="Keep intermediate XLSX files when converting spreadsheets to markdown"),
+    ] = True,
 ) -> None:
     """Download one or more Google Drive documents.
 
@@ -121,6 +133,9 @@ def download(
         gwt download https://docs.google.com/.../edit -d 2  # Follow links 2 levels deep
         gwt download URL -o meetings/notes.md --enable-frontmatter -m "date=2024-01-15" -m "type=meeting"
         gwt download URL -o notes.md --enable-frontmatter --frontmatter-file meta.yaml
+        gwt download SPREADSHEET_URL -f md -s combined  # Single markdown with all sheets
+        gwt download SPREADSHEET_URL -f md -s separate  # One markdown per sheet
+        gwt download SPREADSHEET_URL -f md -s csv  # Legacy CSV export
     """
     # Parse frontmatter fields
     frontmatter_fields: dict[str, Any] = {}
@@ -170,6 +185,8 @@ def download(
         link_depth=depth,
         enable_frontmatter=enable_frontmatter or bool(frontmatter_fields),
         frontmatter_fields=frontmatter_fields,
+        spreadsheet_export_mode=spreadsheet_mode,  # type: ignore[arg-type]
+        keep_intermediate_xlsx=keep_xlsx,
     )
 
     exporter = GoogleDriveExporter(config)

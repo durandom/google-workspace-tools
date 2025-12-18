@@ -45,6 +45,15 @@ class GoogleDriveExporterConfig(BaseModel):
     frontmatter_fields: dict[str, Any] = Field(
         default_factory=dict, description="Custom frontmatter fields to inject"
     )
+    # Spreadsheet export configuration
+    spreadsheet_export_mode: Literal["combined", "separate", "csv"] = Field(
+        default="combined",
+        description="How to export spreadsheets: 'combined' (single .md with all sheets), "
+        "'separate' (one .md per sheet), 'csv' (legacy CSV export)",
+    )
+    keep_intermediate_xlsx: bool = Field(
+        default=True, description="Keep intermediate XLSX files when converting to markdown"
+    )
 
     @field_validator("target_directory", mode="before")
     @classmethod

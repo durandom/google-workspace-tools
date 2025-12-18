@@ -751,6 +751,196 @@ class GoogleDriveExporter:
             logger.error(f"Failed to export sheets as CSV: {e}")
             return False
 
+    def export_spreadsheet_as_markdown(
+        self,
+        spreadsheet_id: str,
+        output_path: Path,
+        spreadsheet_title: str = "untitled",
+        source_url: str = "",
+    ) -> bool:
+        """Export Google Spreadsheet as Markdown using MarkItDown (all sheets combined).
+
+        Args:
+            spreadsheet_id: Google Spreadsheet ID.
+            output_path: Path to save the markdown file.
+            spreadsheet_title: Title of the spreadsheet for frontmatter.
+            source_url: Source URL for frontmatter.
+
+        Returns:
+            True if export successful, False otherwise.
+        """
+        try:
+            from markitdown import MarkItDown
+
+            # First export as XLSX
+            xlsx_path = output_path.with_suffix(".xlsx")
+            logger.info(f"Exporting spreadsheet as XLSX: {xlsx_path}")
+
+            success = self._export_single_format(
+                spreadsheet_id, "xlsx", xlsx_path, doc_type=DocumentType.SPREADSHEET, title=spreadsheet_title
+            )
+
+            if not success:
+                logger.error("Failed to export XLSX file")
+                return False
+
+            # Convert XLSX to Markdown using MarkItDown
+            logger.info("Converting XLSX to Markdown...")
+            md = MarkItDown()
+            result = md.convert(str(xlsx_path))
+
+            # Add frontmatter if enabled
+            content = result.text_content
+            if self.config.enable_frontmatter:
+                url = source_url or f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}"
+                frontmatter = self._generate_frontmatter(
+                    spreadsheet_id, spreadsheet_title, url, DocumentType.SPREADSHEET
+                )
+                content = frontmatter + content
+
+            # Write markdown file
+            output_path.write_text(content, encoding="utf-8")
+            logger.success(f"Exported spreadsheet to {output_path}")
+
+            # Optionally remove XLSX intermediate file
+            if not self.config.keep_intermediate_xlsx:
+                logger.debug(f"Removing intermediate XLSX file: {xlsx_path}")
+                xlsx_path.unlink()
+
+            return True
+
+        except ImportError:
+            logger.error("MarkItDown library not installed. Install with: pip install markitdown")
+            return False
+        except Exception as e:
+            logger.error(f"Failed to export spreadsheet as markdown: {e}")
+            return False
+
+    def export_spreadsheet_sheets_separate(
+        self,
+        spreadsheet_id: str,
+        output_dir: Path,
+        spreadsheet_title: str = "untitled",
+        source_url: str = "",
+    ) -> bool:
+        """Export each sheet from a Google Spreadsheet as a separate Markdown file.
+
+        Args:
+            spreadsheet_id: Google Spreadsheet ID.
+            output_dir: Directory to save the markdown files.
+            spreadsheet_title: Title of the spreadsheet for naming.
+            source_url: Source URL for frontmatter.
+
+        Returns:
+            True if export successful, False otherwise.
+        """
+        try:
+            from markitdown import MarkItDown
+            import openpyxl
+
+            # First export as XLSX
+            xlsx_path = output_dir / f"{spreadsheet_title}.xlsx"
+            logger.info(f"Exporting spreadsheet as XLSX: {xlsx_path}")
+
+            success = self._export_single_format(
+                spreadsheet_id, "xlsx", xlsx_path, doc_type=DocumentType.SPREADSHEET, title=spreadsheet_title
+            )
+
+            if not success:
+                logger.error("Failed to export XLSX file")
+                return False
+
+            # Load workbook to get sheet names
+            wb = openpyxl.load_workbook(xlsx_path, read_only=True)
+            sheet_names = wb.sheetnames
+            wb.close()
+
+            logger.info(f"Found {len(sheet_names)} sheet(s), exporting each as separate markdown file")
+
+            # Create directory with spreadsheet name prefix
+            safe_title = re.sub(r"[^\w\s-]", "_", spreadsheet_title).strip()
+            sheets_dir = output_dir / f"{safe_title}_sheets"
+            sheets_dir.mkdir(parents=True, exist_ok=True)
+
+            # For each sheet, create a temporary single-sheet workbook and convert
+            md = MarkItDown()
+            exported_count = 0
+
+            for sheet_name in sheet_names:
+                try:
+                    # Read only this sheet
+                    wb_full = openpyxl.load_workbook(xlsx_path)
+                    sheet = wb_full[sheet_name]
+
+                    # Create new workbook with only this sheet
+                    wb_single = openpyxl.Workbook()
+                    ws = wb_single.active
+                    ws.title = sheet_name
+
+                    # Copy data
+                    for row in sheet.iter_rows(values_only=False):
+                        for cell in row:
+                            ws[cell.coordinate].value = cell.value
+
+                    # Save temporary single-sheet workbook
+                    temp_xlsx = sheets_dir / f"_temp_{sheet_name}.xlsx"
+                    wb_single.save(temp_xlsx)
+                    wb_full.close()
+
+                    # Convert to markdown
+                    result = md.convert(str(temp_xlsx))
+                    content = result.text_content
+
+                    # Add frontmatter if enabled
+                    if self.config.enable_frontmatter:
+                        url = source_url or f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}"
+                        frontmatter_data = {
+                            "title": f"{spreadsheet_title} - {sheet_name}",
+                            "source": url,
+                            "sheet_name": sheet_name,
+                            "synced_at": datetime.now(UTC).isoformat(),
+                        }
+                        if self.config.frontmatter_fields:
+                            frontmatter_data.update(self.config.frontmatter_fields)
+
+                        yaml_content = yaml.dump(
+                            frontmatter_data, default_flow_style=False, allow_unicode=True, sort_keys=False
+                        )
+                        frontmatter = f"---\n{yaml_content}---\n\n"
+                        content = frontmatter + content
+
+                    # Write markdown file
+                    safe_sheet_name = re.sub(r"[^\w\s-]", "_", sheet_name).strip()
+                    md_path = sheets_dir / f"{safe_sheet_name}.md"
+                    md_path.write_text(content, encoding="utf-8")
+                    logger.success(f"Exported sheet '{sheet_name}' to {md_path}")
+
+                    # Clean up temp file
+                    temp_xlsx.unlink()
+                    exported_count += 1
+
+                except Exception as e:
+                    logger.error(f"Failed to export sheet '{sheet_name}': {e}")
+
+            logger.info(f"Successfully exported {exported_count}/{len(sheet_names)} sheet(s) to: {sheets_dir}/")
+
+            # Optionally remove XLSX intermediate file
+            if not self.config.keep_intermediate_xlsx:
+                logger.debug(f"Removing intermediate XLSX file: {xlsx_path}")
+                xlsx_path.unlink()
+
+            return exported_count > 0
+
+        except ImportError as e:
+            if "markitdown" in str(e):
+                logger.error("MarkItDown library not installed. Install with: pip install markitdown")
+            elif "openpyxl" in str(e):
+                logger.error("openpyxl library not installed. Install with: pip install openpyxl")
+            return False
+        except Exception as e:
+            logger.error(f"Failed to export spreadsheet sheets separately: {e}")
+            return False
+
     def export_document(
         self,
         document_id: str,
@@ -826,10 +1016,10 @@ class GoogleDriveExporter:
         else:
             # For specific format, check if it's supported for this document type
             if self.config.export_format == "md":
-                # Markdown is only supported for documents
+                # Markdown handling by document type
                 if doc_type == DocumentType.SPREADSHEET:
-                    logger.warning("Markdown not supported for spreadsheets, using CSV instead")
-                    formats_to_export = ["csv"]
+                    # Spreadsheet markdown export is handled separately via MarkItDown
+                    formats_to_export = ["md"]
                 elif doc_type == DocumentType.PRESENTATION:
                     logger.warning("Markdown not supported for presentations, using PDF instead")
                     formats_to_export = ["pdf"]
@@ -888,10 +1078,34 @@ class GoogleDriveExporter:
             ):
                 exported_files[format_key] = file_output_path
 
-        # For spreadsheets, also export all sheets as individual CSV files
+        # For spreadsheets, handle special markdown export modes or CSV fallback
         if doc_type == DocumentType.SPREADSHEET:
             logger.info("-" * 50)
-            self.export_all_sheets_as_csv(document_id, self.config.target_directory, safe_title)
+
+            # Check if we're exporting markdown for spreadsheets
+            if "md" in formats_to_export:
+                # Use spreadsheet_export_mode to determine how to export
+                if self.config.spreadsheet_export_mode == "combined":
+                    # Single markdown file with all sheets
+                    md_path = output_path if output_path else self.config.target_directory / f"{safe_title}.md"
+                    if self.export_spreadsheet_as_markdown(document_id, md_path, safe_title, source_url):
+                        exported_files["md"] = md_path
+
+                elif self.config.spreadsheet_export_mode == "separate":
+                    # Separate markdown file per sheet
+                    if self.export_spreadsheet_sheets_separate(
+                        document_id, self.config.target_directory, safe_title, source_url
+                    ):
+                        sheets_dir = self.config.target_directory / f"{safe_title}_sheets"
+                        exported_files["md"] = sheets_dir
+
+                elif self.config.spreadsheet_export_mode == "csv":
+                    # Legacy CSV export
+                    self.export_all_sheets_as_csv(document_id, self.config.target_directory, safe_title)
+            else:
+                # For non-markdown formats, also export CSV sheets if format is csv or all
+                if "csv" in formats_to_export or self.config.export_format == "all":
+                    self.export_all_sheets_as_csv(document_id, self.config.target_directory, safe_title)
 
         # Process linked documents if requested
         if self.config.follow_links and current_depth < self.config.link_depth and "html" in exported_files:

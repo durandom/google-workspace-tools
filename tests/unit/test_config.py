@@ -20,6 +20,8 @@ class TestGoogleDriveExporterConfig:
         assert config.export_format == "html"
         assert config.link_depth == 0
         assert config.follow_links is False
+        assert config.spreadsheet_export_mode == "combined"
+        assert config.keep_intermediate_xlsx is True
 
     def test_custom_config(self, tmp_path: Path):
         """Test custom configuration values."""
