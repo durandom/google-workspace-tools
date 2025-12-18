@@ -14,7 +14,7 @@ try:
     from agno.utils.log import log_error, log_info
 except ImportError as e:
     raise ImportError(
-        "Agno is required for toolkit functionality. " "Install with: pip install google-workspace-tools[agno]"
+        "Agno is required for toolkit functionality. Install with: pip install google-workspace-tools[agno]"
     ) from e
 
 from ..core.config import GoogleDriveExporterConfig

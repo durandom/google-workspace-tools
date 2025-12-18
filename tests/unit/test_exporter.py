@@ -2,8 +2,8 @@
 
 import pytest
 
-from google_workspace_tools.core.exporter import GoogleDriveExporter
 from google_workspace_tools.core.config import GoogleDriveExporterConfig
+from google_workspace_tools.core.exporter import GoogleDriveExporter
 from google_workspace_tools.core.types import DocumentType
 
 

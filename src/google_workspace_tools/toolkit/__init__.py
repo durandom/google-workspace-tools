@@ -28,5 +28,5 @@ def get_toolkit():
         return GoogleDriveTools
     except ImportError as e:
         raise ImportError(
-            "Agno toolkit requires the 'agno' extra. " "Install with: pip install google-workspace-tools[agno]"
+            "Agno toolkit requires the 'agno' extra. Install with: pip install google-workspace-tools[agno]"
         ) from e

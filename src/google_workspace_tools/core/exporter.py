@@ -165,9 +165,7 @@ class GoogleDriveExporter:
             logger.error(f"Failed to get user info: {e}")
             return {}
 
-    def _generate_frontmatter(
-        self, document_id: str, title: str, source_url: str, doc_type: DocumentType
-    ) -> str:
+    def _generate_frontmatter(self, document_id: str, title: str, source_url: str, doc_type: DocumentType) -> str:
         """Generate YAML frontmatter for markdown files.
 
         Args:
@@ -838,8 +836,8 @@ class GoogleDriveExporter:
             True if export successful, False otherwise.
         """
         try:
-            from markitdown import MarkItDown
             import openpyxl
+            from markitdown import MarkItDown
 
             # First export as XLSX
             xlsx_path = output_dir / f"{spreadsheet_title}.xlsx"

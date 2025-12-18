@@ -1,5 +1,10 @@
 # Google Workspace Tools
 
+[![PyPI version](https://img.shields.io/pypi/v/google-workspace-tools.svg)](https://pypi.org/project/google-workspace-tools/)
+[![Python versions](https://img.shields.io/pypi/pyversions/google-workspace-tools.svg)](https://pypi.org/project/google-workspace-tools/)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![CI](https://github.com/durandom/google-workspace-tools/actions/workflows/ci.yml/badge.svg)](https://github.com/durandom/google-workspace-tools/actions/workflows/ci.yml)
+
 A Python toolkit for exporting and managing Google Drive documents with CLI and optional AI agent integration.
 
 ## Features

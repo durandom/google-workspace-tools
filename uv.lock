@@ -555,13 +555,13 @@ wheels = [
 
 [[package]]
 name = "html-to-markdown"
-version = "2.14.10"
+version = "2.14.11"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/59/ea/65eb05e775c02f4bb151a0964d6e0681242075c57dd6b5038a5deb72accd/html_to_markdown-2.14.10.tar.gz", hash = "sha256:7ba5b1e2f92ee6c2998ab78c204c12db33df9c48311706b28951ec9776bd046b", size = 164816, upload-time = "2025-12-16T08:37:30.601Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b4/0c/6cbccf246c89910d66579fd481486d1f971cc864ab7bb8882b5f9095cb81/html_to_markdown-2.14.11.tar.gz", hash = "sha256:df9a30a6a0523949d56a41c0ee234f25d7f802cb37afd8a44906481bfce9567e", size = 164812, upload-time = "2025-12-16T09:24:16.042Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ff/89/0fe2e140d94644a1224363720b118ead8ee21fc9f08f6c2b1e20efcb4f9b/html_to_markdown-2.14.10-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:585a2cce0822325d46d8c71c9438deb6871d9bd551c551a81215591f6fcb768c", size = 7320664, upload-time = "2025-12-16T08:37:25.108Z" },
-    { url = "https://files.pythonhosted.org/packages/d1/13/860762ce6473a291150bfb538ae09c97635a2e4d39e19eac131d4c87f7ad/html_to_markdown-2.14.10-cp310-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:4c33c0a5803fcae8a9df73d3e0ccde3f22b30524b58d97afcd59265c0353fc3c", size = 8054221, upload-time = "2025-12-16T08:37:27.227Z" },
-    { url = "https://files.pythonhosted.org/packages/3c/76/98dbf0f2573864de6888a6f19b1908f7cb542a02d70abe66d05f02b626c3/html_to_markdown-2.14.10-cp310-abi3-win_amd64.whl", hash = "sha256:3015eda3d03d0ce912a012e770ba771f71fbda8607e51ed5355b73e0f3a99474", size = 8094716, upload-time = "2025-12-16T08:37:29.126Z" },
+    { url = "https://files.pythonhosted.org/packages/e3/61/430966bd6578d82645251c698be0da5378ec72df232f99644e900698d363/html_to_markdown-2.14.11-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:185a6838c0168b42e7c761af2a218fe8108d3409ecd1c48fc7d62bc3cfa9ef2c", size = 7321042, upload-time = "2025-12-16T09:24:10.945Z" },
+    { url = "https://files.pythonhosted.org/packages/d1/e6/00e52e31b33b18899d7f5740c6e82b92534e15d75af902410da26ecf6114/html_to_markdown-2.14.11-cp310-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:5678d346f71268a4aabe9fe737f901ced267c7d3c023f5cc6ab035e45eb4c059", size = 8054064, upload-time = "2025-12-16T09:24:12.786Z" },
+    { url = "https://files.pythonhosted.org/packages/59/4a/2a97e6e0896793e2906387b9214dce9664dc7794be117053308e225463c7/html_to_markdown-2.14.11-cp310-abi3-win_amd64.whl", hash = "sha256:862f7cc7b1efc5dca82771fa83feaeebb9ff5081184218d2adb7405e11e0c945", size = 8095010, upload-time = "2025-12-16T09:24:14.583Z" },
 ]
 
 [[package]]
@@ -1166,14 +1166,14 @@ wheels = [
 
 [[package]]
 name = "proto-plus"
-version = "1.26.1"
+version = "1.27.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "protobuf" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f4/ac/87285f15f7cce6d4a008f33f1757fb5a13611ea8914eb58c3d0d26243468/proto_plus-1.26.1.tar.gz", hash = "sha256:21a515a4c4c0088a773899e23c7bbade3d18f9c66c73edd4c7ee3816bc96a012", size = 56142, upload-time = "2025-03-10T15:54:38.843Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/01/89/9cbe2f4bba860e149108b683bc2efec21f14d5f7ed6e25562ad86acbc373/proto_plus-1.27.0.tar.gz", hash = "sha256:873af56dd0d7e91836aee871e5799e1c6f1bda86ac9a983e0bb9f0c266a568c4", size = 56158, upload-time = "2025-12-16T13:46:25.729Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/4e/6d/280c4c2ce28b1593a19ad5239c8b826871fc6ec275c21afc8e1820108039/proto_plus-1.26.1-py3-none-any.whl", hash = "sha256:13285478c2dcf2abb829db158e1047e2f1e8d63a077d94263c2b88b043c75a66", size = 50163, upload-time = "2025-03-10T15:54:37.335Z" },
+    { url = "https://files.pythonhosted.org/packages/cd/24/3b7a0818484df9c28172857af32c2397b6d8fcd99d9468bd4684f98ebf0a/proto_plus-1.27.0-py3-none-any.whl", hash = "sha256:1baa7f81cf0f8acb8bc1f6d085008ba4171eaf669629d1b6d1673b21ed1c0a82", size = 50205, upload-time = "2025-12-16T13:46:24.76Z" },
 ]
 
 [[package]]

@@ -42,9 +42,7 @@ class GoogleDriveExporterConfig(BaseModel):
     )
     # Frontmatter configuration
     enable_frontmatter: bool = Field(default=False, description="Enable YAML frontmatter in markdown files")
-    frontmatter_fields: dict[str, Any] = Field(
-        default_factory=dict, description="Custom frontmatter fields to inject"
-    )
+    frontmatter_fields: dict[str, Any] = Field(default_factory=dict, description="Custom frontmatter fields to inject")
     # Spreadsheet export configuration
     spreadsheet_export_mode: Literal["combined", "separate", "csv"] = Field(
         default="combined",

@@ -1,10 +1,8 @@
 """End-to-end tests for CLI commands."""
 
-import pytest
 from typer.testing import CliRunner
 
 from google_workspace_tools.cli.app import app
-
 
 runner = CliRunner()
 

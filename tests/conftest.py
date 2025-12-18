@@ -1,7 +1,8 @@
 """Pytest fixtures for Google Workspace Tools tests."""
 
-import pytest
 from pathlib import Path
+
+import pytest
 
 
 @pytest.fixture

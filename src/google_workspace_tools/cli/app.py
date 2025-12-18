@@ -70,7 +70,10 @@ def main_callback(
         logger.remove()
         logger.add(
             sys.stderr,
-            format="<green>{time:HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan> - <level>{message}</level>",
+            format=(
+                "<green>{time:HH:mm:ss}</green> | <level>{level: <8}</level> | "
+                "<cyan>{name}</cyan> - <level>{message}</level>"
+            ),
             level=level,
             colorize=True,
         )
@@ -152,7 +155,7 @@ def download(
                     frontmatter_fields.update(file_data)
         except Exception as e:
             console.print(f"[red]Error loading frontmatter file: {e}[/red]")
-            raise typer.Exit(1)
+            raise typer.Exit(1) from e
 
     # Parse command-line frontmatter options
     if frontmatter:
@@ -223,10 +226,10 @@ def download(
     except FileNotFoundError as e:
         console.print(f"[red]Error: {e}[/red]")
         console.print("\n[dim]Run 'gwt auth' to set up authentication[/dim]")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
 
 
 @app.command()
@@ -284,10 +287,10 @@ def mirror(
 
     except FileNotFoundError as e:
         console.print(f"[red]Error: {e}[/red]")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
 
 
 @app.command()
@@ -346,7 +349,7 @@ def auth(
 
     except Exception as e:
         console.print(f"[red]Authentication failed: {e}[/red]")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
 
 
 @app.command()
@@ -384,13 +387,13 @@ def whoami(
             console.print("[yellow]No user information available[/yellow]")
             console.print("[dim]Run 'gwt auth' to authenticate[/dim]")
 
-    except FileNotFoundError:
+    except FileNotFoundError as e:
         console.print("[yellow]Not authenticated[/yellow]")
         console.print("[dim]Run 'gwt auth' to set up authentication[/dim]")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
 
 
 @app.command()
@@ -468,7 +471,7 @@ def extract_id(
 
     except ValueError as e:
         console.print(f"[red]Error: {e}[/red]")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
 
 
 @app.command()

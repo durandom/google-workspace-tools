@@ -1,10 +1,11 @@
 """Tests for configuration models."""
 
-import pytest
 from pathlib import Path
 
+import pytest
+
 from google_workspace_tools.core.config import GoogleDriveExporterConfig
-from google_workspace_tools.core.types import DocumentType, ExportFormat, DocumentConfig
+from google_workspace_tools.core.types import DocumentConfig, DocumentType, ExportFormat
 
 
 class TestGoogleDriveExporterConfig:
@@ -55,10 +56,10 @@ class TestGoogleDriveExporterConfig:
             assert config.link_depth == depth
 
         # Invalid depths
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="greater than or equal to 0"):
             GoogleDriveExporterConfig(link_depth=-1)
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="less than or equal to 5"):
             GoogleDriveExporterConfig(link_depth=6)
 
 

@@ -1,12 +1,11 @@
 """Tests for spreadsheet to markdown conversion."""
 
-import pytest
-from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import MagicMock, patch
 
-from google_workspace_tools.core.exporter import GoogleDriveExporter
+import pytest
+
 from google_workspace_tools.core.config import GoogleDriveExporterConfig
-from google_workspace_tools.core.types import DocumentType
+from google_workspace_tools.core.exporter import GoogleDriveExporter
 
 
 class TestSpreadsheetMarkdownExport:
@@ -28,7 +27,9 @@ class TestSpreadsheetMarkdownExport:
         """Mock MarkItDown library."""
         with patch("markitdown.MarkItDown") as mock:
             mock_instance = MagicMock()
-            mock_instance.convert.return_value = MagicMock(text_content="# Test Sheet\n\n| A | B |\n|---|---|\n| 1 | 2 |\n")
+            mock_instance.convert.return_value = MagicMock(
+                text_content="# Test Sheet\n\n| A | B |\n|---|---|\n| 1 | 2 |\n"
+            )
             mock.return_value = mock_instance
             yield mock
 

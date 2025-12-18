@@ -57,7 +57,10 @@ def main() -> None:
     else:
         logger.add(
             sys.stderr,
-            format="<green>{time:HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan> - <level>{message}</level>",
+            format=(
+                "<green>{time:HH:mm:ss}</green> | <level>{level: <8}</level> | "
+                "<cyan>{name}</cyan> - <level>{message}</level>"
+            ),
             level=settings.log_level,
             colorize=True,
         )
