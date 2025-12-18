@@ -278,6 +278,67 @@ export GWT_LOG_LEVEL=DEBUG
 - `odp` - OpenDocument Presentation
 - `txt` - Plain text
 
+## Comment Export Support
+
+Comments, suggestions, and reactions are **automatically preserved** in most export formats without any configuration required. The Google Drive API includes comment data based on each format's capabilities.
+
+### Comment Support by Format
+
+| Format | Google Docs | Google Sheets | Google Slides | Features Preserved |
+|--------|-------------|---------------|---------------|-------------------|
+| **DOCX/XLSX/PPTX** | ✅ Full | ✅ Full | ✅ Full | Author, timestamp, reactions, threading, position |
+| **ODT/ODS/ODP** | ✅ Full | ✅ Full | ✅ Full | Author, timestamp, position |
+| **HTML** | ✅ Full | N/A | N/A | Styled divs with anchor links |
+| **Markdown** | ✅ Full | N/A | N/A | Footnote-style with anchor links |
+| **TXT** | ✅ Footnotes | N/A | ❌ No | Simple footnote references |
+| **EPUB** | ✅ Full | N/A | N/A | Embedded in HTML content |
+| **PDF** | ❌ No | ❌ No | ❌ No | **Not supported by Drive API** |
+| **RTF** | ❌ No | N/A | N/A | Stripped during export |
+| **CSV/TSV** | N/A | ❌ No | N/A | Format doesn't support comments |
+
+### Key Points
+
+- **Microsoft Office formats** (DOCX, XLSX, PPTX): Full comment preservation including threaded replies, emoji reactions, and author metadata
+- **OpenDocument formats** (ODT, ODS, ODP): Full comment preservation with structured XML annotations
+- **Markdown & HTML** (Docs only): Comments exported as footnotes with anchor links, including reactions (e.g., 👍)
+- **PDF exports**: Comments are **never** included in PDF exports across all document types (Google Drive API limitation)
+
+### Example: Markdown with Comments
+
+When exporting a Google Doc with comments to Markdown:
+
+```markdown
+Document text with a comment marker[[a]](#cmnt1)
+
+[[a]](#cmnt_ref1)This is the comment text
+1 total reaction
+Jane Doe reacted with 👍 at 2024-01-15 10:30 AM
+```
+
+### Example: Spreadsheet Comment Threading
+
+XLSX exports preserve full comment threads:
+
+```
+Cell A1 comment:
+  Initial comment text
+    -Jane Doe
+  Reply to comment
+    -John Smith
+```
+
+### Recommendations
+
+**Best formats for preserving comments:**
+- Collaboration with Microsoft Office: DOCX, XLSX, PPTX
+- Open format archival: ODT, ODS, ODP
+- LLM/AI processing: Markdown, HTML (for Google Docs)
+
+**Avoid if comments are important:**
+- PDF (comments not exported)
+- CSV/TSV (format limitation)
+- RTF (comments stripped)
+
 ## Authentication
 
 1. Create a project in [Google Cloud Console](https://console.cloud.google.com/)
