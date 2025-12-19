@@ -12,6 +12,8 @@ class DocumentType(Enum):
     DOCUMENT = "document"
     SPREADSHEET = "spreadsheet"
     PRESENTATION = "presentation"
+    EMAIL = "email"
+    CALENDAR_EVENT = "calendar"
     UNKNOWN = "unknown"
 
 

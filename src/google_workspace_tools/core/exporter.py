@@ -1,12 +1,14 @@
 """Google Drive document exporter."""
 
+import base64
 import csv
 import io
 import json
 import re
-from datetime import UTC, datetime
+from collections.abc import Generator
+from datetime import UTC, datetime, timezone
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast
 from urllib.parse import parse_qs, urlparse
 
 import google.auth.transport.requests
@@ -20,6 +22,7 @@ from html_to_markdown import convert_to_markdown
 from loguru import logger
 
 from .config import GoogleDriveExporterConfig
+from .filters import CalendarEventFilter, GmailSearchFilter
 from .types import DocumentConfig, DocumentType, ExportFormat
 
 
@@ -80,8 +83,35 @@ class GoogleDriveExporter:
         "html": ExportFormat(extension="html", mime_type="text/html", description="HTML Document"),
     }
 
+    # Email export formats
+    EMAIL_EXPORT_FORMATS: dict[str, ExportFormat] = {
+        "json": ExportFormat(
+            extension="json", mime_type="application/json", description="JSON format (machine-readable)"
+        ),
+        "md": ExportFormat(
+            extension="md", mime_type="text/markdown", description="Markdown format (human/LLM-optimized)"
+        ),
+    }
+
+    # Calendar event export formats
+    CALENDAR_EXPORT_FORMATS: dict[str, ExportFormat] = {
+        "json": ExportFormat(
+            extension="json", mime_type="application/json", description="JSON format (machine-readable)"
+        ),
+        "md": ExportFormat(
+            extension="md", mime_type="text/markdown", description="Markdown format (human/LLM-optimized)"
+        ),
+    }
+
     # Combined formats for backward compatibility
     EXPORT_FORMATS: dict[str, ExportFormat] = DOCUMENT_EXPORT_FORMATS
+
+    # Google Workspace mime types (exportable via export_media)
+    GOOGLE_WORKSPACE_MIME_TYPES = {
+        "application/vnd.google-apps.document",
+        "application/vnd.google-apps.spreadsheet",
+        "application/vnd.google-apps.presentation",
+    }
 
     def __init__(self, config: GoogleDriveExporterConfig | None = None, download_callback=None):
         """Initialize the exporter with configuration.
@@ -104,6 +134,22 @@ class GoogleDriveExporter:
             self._service = build("drive", "v3", credentials=creds)
         return self._service
 
+    @property
+    def gmail_service(self):
+        """Get or create the Gmail API service instance."""
+        if not hasattr(self, "_gmail_service"):
+            creds = self._authenticate()
+            self._gmail_service = build("gmail", "v1", credentials=creds)
+        return self._gmail_service
+
+    @property
+    def calendar_service(self):
+        """Get or create the Google Calendar API service instance."""
+        if not hasattr(self, "_calendar_service"):
+            creds = self._authenticate()
+            self._calendar_service = build("calendar", "v3", credentials=creds)
+        return self._calendar_service
+
     def _authenticate(self) -> Credentials:
         """Authenticate with Google Drive API.
 
@@ -112,12 +158,25 @@ class GoogleDriveExporter:
         """
         creds = None
 
+        # Check if scopes have changed (requires re-authentication, not refresh)
+        scopes_match = True
         if self.config.token_path.exists():
             logger.debug(f"Loading credentials from {self.config.token_path}")
-            creds = Credentials.from_authorized_user_file(str(self.config.token_path), self.config.scopes)
+            # Read scopes from token file before loading credentials
+            with open(self.config.token_path) as f:
+                token_data = json.load(f)
+                token_scopes = set(token_data.get("scopes", []))
+                required_scopes = set(self.config.scopes)
+                scopes_match = required_scopes <= token_scopes
+                if not scopes_match:
+                    missing = required_scopes - token_scopes
+                    logger.info(f"Scopes changed, re-authentication required. Missing: {missing}")
 
-        if not creds or not creds.valid:
-            if creds and creds.expired and creds.refresh_token:
+            if scopes_match:
+                creds = Credentials.from_authorized_user_file(str(self.config.token_path), self.config.scopes)
+
+        if not creds or not creds.valid or not scopes_match:
+            if creds and creds.expired and creds.refresh_token and scopes_match:
                 logger.info("Refreshing expired credentials")
                 creds.refresh(google.auth.transport.requests.Request())
             else:
@@ -274,6 +333,95 @@ class GoogleDriveExporter:
         }
 
         return mime_type_mapping.get(mime_type, DocumentType.UNKNOWN)
+
+    def is_google_workspace_file(self, mime_type: str) -> bool:
+        """Check if a file is a Google Workspace file (exportable) or a regular Drive file (downloadable).
+
+        Args:
+            mime_type: The MIME type of the file.
+
+        Returns:
+            True if the file is a Google Workspace file (Docs, Sheets, Slides), False otherwise.
+        """
+        return mime_type in self.GOOGLE_WORKSPACE_MIME_TYPES
+
+    def _download_raw_file(
+        self,
+        document_id: str,
+        output_path: Path,
+        mime_type: str,
+        title: str = "untitled",
+        source_url: str = "",
+    ) -> bool:
+        """Download a raw Drive file (non-Google Workspace file) using get_media.
+
+        This method is used for files like videos, plain text, PDFs, images, etc.
+        that cannot be exported but must be downloaded as-is.
+
+        Args:
+            document_id: Google Drive document ID.
+            output_path: Path to save the downloaded file.
+            mime_type: The MIME type of the file.
+            title: Document title for frontmatter.
+            source_url: Source URL for frontmatter.
+
+        Returns:
+            True if download successful, False otherwise.
+        """
+        try:
+            # Use get_media to download the raw file
+            request = self.service.files().get_media(fileId=document_id)
+
+            fh = io.BytesIO()
+            downloader = MediaIoBaseDownload(fh, request)
+            done = False
+
+            while not done:
+                status, done = downloader.next_chunk()
+                if status:
+                    progress = int(status.progress() * 100)
+                    logger.debug(f"Download progress: {progress}%")
+
+            # Ensure parent directory exists
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+
+            # Handle special case: plain text files requested as markdown
+            if mime_type == "text/plain" and output_path.suffix == ".md":
+                # Convert plain text to markdown by adding frontmatter
+                text_content = fh.getvalue().decode("utf-8", errors="replace")
+
+                with open(output_path, "w", encoding="utf-8") as f:
+                    # Add frontmatter if enabled
+                    if self.config.enable_frontmatter:
+                        url = source_url or f"https://drive.google.com/file/d/{document_id}"
+                        frontmatter = self._generate_frontmatter(
+                            document_id, title, url, DocumentType.DOCUMENT
+                        )
+                        f.write(frontmatter)
+                    f.write(text_content)
+            else:
+                # Write raw binary data
+                with open(output_path, "wb") as f:
+                    f.write(fh.getvalue())
+
+            logger.success(f"Downloaded to {output_path}")
+
+            # Call download callback on success
+            if self.download_callback:
+                format_key = output_path.suffix.lstrip(".")
+                self.download_callback(document_id, format_key, output_path, True)
+
+            return True
+
+        except HttpError as error:
+            logger.error(f"Failed to download raw file: {error}")
+
+            # Call download callback on failure
+            if self.download_callback:
+                format_key = output_path.suffix.lstrip(".")
+                self.download_callback(document_id, format_key, output_path, False)
+
+            return False
 
     def parse_config_file(self, config_path: Path) -> list[DocumentConfig]:
         """Parse the mirror configuration file.
@@ -618,6 +766,51 @@ class GoogleDriveExporter:
 
             return False
 
+    def _extract_links_from_text(self, content: str) -> list[str]:
+        """Extract Google Drive links from HTML text content.
+
+        Args:
+            content: HTML or text content to search.
+
+        Returns:
+            List of Google Drive document IDs found in the content.
+        """
+        # Find all Google Docs/Drive links (including wrapped redirect URLs)
+        patterns = [
+            # Direct Google Docs/Drive links
+            r'(?:href="|>)https://(?:docs\.google\.com/document/(?:u/\d+/)?d/|drive\.google\.com/file/d/|drive\.google\.com/open\?id=)([a-zA-Z0-9-_]+)',
+            # Direct Google Sheets links
+            r'(?:href="|>)https://(?:docs\.google\.com/spreadsheets/(?:u/\d+/)?d/|sheets\.google\.com/spreadsheets/d/)([a-zA-Z0-9-_]+)',
+            # Direct Google Slides links
+            r'(?:href="|>)https://(?:docs\.google\.com/presentation/(?:u/\d+/)?d/|slides\.google\.com/presentation/d/)([a-zA-Z0-9-_]+)',
+            # Google-wrapped redirect URLs containing docs.google.com
+            r'(?:href="|>)https://www\.google\.com/url\?q=https://docs\.google\.com/document/(?:u/\d+/)?d/([a-zA-Z0-9-_]+)',
+            # Google-wrapped redirect URLs containing sheets
+            r'(?:href="|>)https://www\.google\.com/url\?q=https://docs\.google\.com/spreadsheets/(?:u/\d+/)?d/([a-zA-Z0-9-_]+)',
+            # Google-wrapped redirect URLs containing slides
+            r'(?:href="|>)https://www\.google\.com/url\?q=https://docs\.google\.com/presentation/(?:u/\d+/)?d/([a-zA-Z0-9-_]+)',
+            # Google-wrapped redirect URLs with drive.google.com
+            r'(?:href="|>)https://www\.google\.com/url\?q=https://drive\.google\.com/(?:file/d/|open\?id=)([a-zA-Z0-9-_]+)',
+        ]
+
+        all_matches = []
+        for pattern in patterns:
+            matches = re.findall(pattern, content)
+            all_matches.extend(matches)
+
+        logger.debug(f"Found {len(all_matches)} potential Google Drive links")
+
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_ids = []
+        for doc_id in all_matches:
+            if doc_id not in seen and doc_id not in self._processed_docs:
+                seen.add(doc_id)
+                unique_ids.append(doc_id)
+                logger.debug(f"Added document ID to process: {doc_id}")
+
+        return unique_ids
+
     def _extract_links_from_html(self, html_path: Path) -> list[str]:
         """Extract Google Drive links from exported HTML.
 
@@ -634,41 +827,7 @@ class GoogleDriveExporter:
             with open(html_path, encoding="utf-8") as f:
                 content = f.read()
 
-            # Find all Google Docs/Drive links (including wrapped redirect URLs)
-            patterns = [
-                # Direct Google Docs/Drive links
-                r'href="https://(?:docs\.google\.com/document/(?:u/\d+/)?d/|drive\.google\.com/file/d/|drive\.google\.com/open\?id=)([a-zA-Z0-9-_]+)',
-                # Direct Google Sheets links
-                r'href="https://(?:docs\.google\.com/spreadsheets/(?:u/\d+/)?d/|sheets\.google\.com/spreadsheets/d/)([a-zA-Z0-9-_]+)',
-                # Direct Google Slides links
-                r'href="https://(?:docs\.google\.com/presentation/(?:u/\d+/)?d/|slides\.google\.com/presentation/d/)([a-zA-Z0-9-_]+)',
-                # Google-wrapped redirect URLs containing docs.google.com
-                r'href="https://www\.google\.com/url\?q=https://docs\.google\.com/document/(?:u/\d+/)?d/([a-zA-Z0-9-_]+)',
-                # Google-wrapped redirect URLs containing sheets
-                r'href="https://www\.google\.com/url\?q=https://docs\.google\.com/spreadsheets/(?:u/\d+/)?d/([a-zA-Z0-9-_]+)',
-                # Google-wrapped redirect URLs containing slides
-                r'href="https://www\.google\.com/url\?q=https://docs\.google\.com/presentation/(?:u/\d+/)?d/([a-zA-Z0-9-_]+)',
-                # Google-wrapped redirect URLs with drive.google.com
-                r'href="https://www\.google\.com/url\?q=https://drive\.google\.com/(?:file/d/|open\?id=)([a-zA-Z0-9-_]+)',
-            ]
-
-            all_matches = []
-            for pattern in patterns:
-                matches = re.findall(pattern, content)
-                all_matches.extend(matches)
-
-            logger.debug(f"Found {len(all_matches)} potential Google Drive links")
-
-            # Remove duplicates while preserving order
-            seen = set()
-            unique_ids = []
-            for doc_id in all_matches:
-                if doc_id not in seen and doc_id not in self._processed_docs:
-                    seen.add(doc_id)
-                    unique_ids.append(doc_id)
-                    logger.debug(f"Added document ID to process: {doc_id}")
-
-            return unique_ids
+            return self._extract_links_from_text(content)
 
         except Exception as e:
             logger.error(f"Failed to extract links from {html_path}: {e}")
@@ -995,6 +1154,48 @@ class GoogleDriveExporter:
                 doc_type = DocumentType.DOCUMENT
                 logger.debug("Defaulting to document type for unknown file")
 
+        # Check if this is a regular Drive file (not a Google Workspace file)
+        # If so, download it as raw file instead of exporting
+        if metadata and not self.is_google_workspace_file(metadata.get("mimeType", "")):
+            mime_type = metadata.get("mimeType", "")
+            logger.info(
+                f"Downloading raw file '{doc_title}' (ID: {document_id}, mime: {mime_type}) to {self.config.target_directory}"
+            )
+
+            # Determine file extension based on mime type or current format
+            extension_map = {
+                "text/plain": "txt",
+                "application/pdf": "pdf",
+                "video/mp4": "mp4",
+                "video/quicktime": "mov",
+                "image/png": "png",
+                "image/jpeg": "jpg",
+            }
+
+            # Use extension from mime type, or fall back to requested format
+            if self.config.export_format == "md" and mime_type == "text/plain":
+                # Special case: plain text files can be saved as markdown
+                extension = "md"
+            else:
+                extension = extension_map.get(mime_type, self.config.export_format)
+
+            safe_title = output_name or re.sub(r"[^\w\s-]", "_", doc_title).strip()
+
+            # Determine output path
+            if output_path:
+                file_output_path = output_path
+            else:
+                file_output_path = self.config.target_directory / f"{safe_title}.{extension}"
+
+            # Build source URL
+            source_url = f"https://drive.google.com/file/d/{document_id}"
+
+            # Download the raw file
+            if self._download_raw_file(document_id, file_output_path, mime_type, doc_title, source_url):
+                return {extension: file_output_path}
+            else:
+                return {}
+
         safe_title = output_name or re.sub(r"[^\w\s-]", "_", doc_title).strip()
 
         # Ensure target directory exists
@@ -1200,3 +1401,821 @@ class GoogleDriveExporter:
         Call this if you want to re-process documents that were already exported.
         """
         self._processed_docs.clear()
+
+    # ===== Gmail Export Methods =====
+
+    def _extract_message_body(self, message: dict[str, Any]) -> tuple[str, str]:
+        """Extract plain text and HTML bodies from a Gmail message.
+
+        Args:
+            message: Gmail message object from API
+
+        Returns:
+            Tuple of (plain_text_body, html_body)
+        """
+        text_body = ""
+        html_body = ""
+        payload = message.get("payload", {})
+        parts = [payload] if "parts" not in payload else payload.get("parts", [])
+
+        # BFS traversal of message parts
+        part_queue = list(parts)
+        while part_queue:
+            part = part_queue.pop(0)
+            mime_type = part.get("mimeType", "")
+            body_data = part.get("body", {}).get("data")
+
+            if body_data:
+                try:
+                    decoded_data = base64.urlsafe_b64decode(body_data).decode("utf-8", errors="ignore")
+                    if mime_type == "text/plain" and not text_body:
+                        text_body = decoded_data
+                    elif mime_type == "text/html" and not html_body:
+                        html_body = decoded_data
+                except Exception as e:
+                    logger.warning(f"Failed to decode body part: {e}")
+
+            # Add sub-parts to queue for multipart messages
+            if mime_type.startswith("multipart/") and "parts" in part:
+                part_queue.extend(part.get("parts", []))
+
+        # Check the main payload if it has body data directly
+        if payload.get("body", {}).get("data"):
+            try:
+                decoded_data = base64.urlsafe_b64decode(payload["body"]["data"]).decode("utf-8", errors="ignore")
+                mime_type = payload.get("mimeType", "")
+                if mime_type == "text/plain" and not text_body:
+                    text_body = decoded_data
+                elif mime_type == "text/html" and not html_body:
+                    html_body = decoded_data
+            except Exception as e:
+                logger.warning(f"Failed to decode main payload body: {e}")
+
+        return text_body, html_body
+
+    def _extract_email_attachments(self, message: dict[str, Any]) -> list[dict[str, Any]]:
+        """Extract attachment metadata from a Gmail message.
+
+        Args:
+            message: Gmail message object from API
+
+        Returns:
+            List of attachment metadata dictionaries
+        """
+        attachments = []
+
+        def search_parts(part):
+            """Recursively search for attachments in message parts."""
+            if part.get("filename") and part.get("body", {}).get("attachmentId"):
+                attachments.append(
+                    {
+                        "filename": part["filename"],
+                        "mime_type": part.get("mimeType", "application/octet-stream"),
+                        "size": part.get("body", {}).get("size", 0),
+                        "attachment_id": part["body"]["attachmentId"],
+                    }
+                )
+
+            if "parts" in part:
+                for subpart in part["parts"]:
+                    search_parts(subpart)
+
+        payload = message.get("payload", {})
+        search_parts(payload)
+        return attachments
+
+    def _fetch_message_content(self, message_id: str) -> dict[str, Any]:
+        """Fetch full message content from Gmail API.
+
+        Args:
+            message_id: Gmail message ID
+
+        Returns:
+            Full message object with headers, body, and attachments
+        """
+        message = self.gmail_service.users().messages().get(userId="me", id=message_id, format="full").execute()
+
+        # Extract headers
+        headers = {}
+        for header in message.get("payload", {}).get("headers", []):
+            headers[header["name"]] = header["value"]
+
+        # Extract bodies
+        text_body, html_body = self._extract_message_body(message)
+
+        # Extract attachments
+        attachments = self._extract_email_attachments(message)
+
+        return {
+            "id": message.get("id"),
+            "thread_id": message.get("threadId"),
+            "label_ids": message.get("labelIds", []),
+            "snippet": message.get("snippet", ""),
+            "headers": headers,
+            "text_body": text_body,
+            "html_body": html_body,
+            "attachments": attachments,
+            "internal_date": message.get("internalDate"),
+        }
+
+    def _fetch_messages_paginated(
+        self, filters: GmailSearchFilter | None = None
+    ) -> Generator[dict[str, Any], None, None]:
+        """Fetch messages with pagination support.
+
+        Args:
+            filters: Search filters to apply
+
+        Yields:
+            Message metadata dictionaries
+        """
+        if filters is None:
+            filters = GmailSearchFilter()
+
+        query = filters.build_query()
+        next_page_token = None
+        total_yielded = 0
+
+        logger.info(f"Fetching Gmail messages with query: '{query}'")
+
+        while True:
+            # Calculate how many more messages we need
+            remaining = filters.max_results - total_yielded
+            if remaining <= 0:
+                break
+
+            request_params = {
+                "userId": "me",
+                "q": query,
+                "maxResults": min(remaining, 500),  # API max is 500
+                "includeSpamTrash": filters.include_spam_trash,
+            }
+
+            if next_page_token:
+                request_params["pageToken"] = next_page_token
+
+            response = self.gmail_service.users().messages().list(**request_params).execute()
+
+            messages = response.get("messages", [])
+            for msg in messages:
+                if total_yielded >= filters.max_results:
+                    return
+                yield msg
+                total_yielded += 1
+
+            next_page_token = response.get("nextPageToken")
+            if not next_page_token:
+                break
+
+    def _group_messages_by_thread(self, messages: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+        """Group messages into conversation threads.
+
+        Args:
+            messages: List of message objects with thread_id
+
+        Returns:
+            Dictionary mapping thread_id to list of messages
+        """
+        threads: dict[str, list[dict[str, Any]]] = {}
+
+        for message in messages:
+            thread_id = message.get("thread_id", message.get("id"))
+            if thread_id not in threads:
+                threads[thread_id] = []
+            threads[thread_id].append(message)
+
+        # Sort messages within each thread by internal_date
+        for thread_id in threads:
+            threads[thread_id].sort(
+                key=lambda m: int(m.get("internal_date", 0)) if m.get("internal_date") else 0
+            )
+
+        return threads
+
+    def _export_email_thread_as_json(
+        self, thread_id: str, messages: list[dict[str, Any]], output_path: Path
+    ) -> bool:
+        """Export email thread as JSON.
+
+        Args:
+            thread_id: Gmail thread ID
+            messages: List of messages in thread
+            output_path: Path to save JSON file
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            # Extract Drive links from all messages
+            drive_links = []
+            for message in messages:
+                text = message.get("text_body", "") + message.get("html_body", "")
+                links = self._extract_links_from_text(text)
+                drive_links.extend(links)
+
+            # Get thread subject from first message
+            subject = messages[0].get("headers", {}).get("Subject", "(no subject)") if messages else "(no subject)"
+
+            thread_data = {
+                "thread_id": thread_id,
+                "subject": subject,
+                "message_count": len(messages),
+                "messages": messages,
+                "drive_links": list(set(drive_links)),  # Deduplicate
+                "exported_at": datetime.now(UTC).isoformat(),
+            }
+
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(output_path, "w", encoding="utf-8") as f:
+                json.dump(thread_data, f, indent=2, ensure_ascii=False)
+
+            logger.debug(f"Exported email thread to JSON: {output_path}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to export email thread to JSON: {e}")
+            return False
+
+    def _export_email_thread_as_markdown(
+        self, thread_id: str, messages: list[dict[str, Any]], output_path: Path
+    ) -> bool:
+        """Export email thread as Markdown with frontmatter.
+
+        Args:
+            thread_id: Gmail thread ID
+            messages: List of messages in thread
+            output_path: Path to save Markdown file
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            subject = messages[0].get("headers", {}).get("Subject", "(no subject)") if messages else "(no subject)"
+
+            # Extract participants
+            participants = set()
+            labels = set()
+            for message in messages:
+                headers = message.get("headers", {})
+                if "From" in headers:
+                    participants.add(headers["From"])
+                if "To" in headers:
+                    participants.add(headers["To"])
+                labels.update(message.get("label_ids", []))
+
+            # Generate frontmatter
+            frontmatter_data = {
+                "thread_id": thread_id,
+                "subject": subject,
+                "participants": sorted(list(participants)),
+                "message_count": len(messages),
+                "labels": sorted(list(labels)),
+                "exported_at": datetime.now(UTC).isoformat(),
+            }
+
+            if self.config.frontmatter_fields:
+                frontmatter_data.update(self.config.frontmatter_fields)
+
+            yaml_content = yaml.dump(frontmatter_data, default_flow_style=False, allow_unicode=True, sort_keys=False)
+            md_content = f"---\n{yaml_content}---\n\n"
+
+            # Add thread title
+            md_content += f"# Email Thread: {subject}\n\n"
+
+            # Add each message
+            for i, message in enumerate(messages, 1):
+                headers = message.get("headers", {})
+                sender = headers.get("From", "(unknown)")
+                to = headers.get("To", "")
+                cc = headers.get("Cc", "")
+                date = headers.get("Date", "")
+                label_ids = message.get("label_ids", [])
+
+                md_content += f"## Message {i} ({date})\n\n"
+                md_content += f"**From:** {sender}\n\n"
+                if to:
+                    md_content += f"**To:** {to}\n\n"
+                if cc:
+                    md_content += f"**Cc:** {cc}\n\n"
+                if label_ids:
+                    md_content += f"**Labels:** {', '.join(label_ids)}\n\n"
+
+                # Convert HTML to Markdown or use plain text
+                html_body = message.get("html_body", "")
+                text_body = message.get("text_body", "")
+
+                if html_body:
+                    try:
+                        body_md = convert_to_markdown(html_body)
+                        md_content += body_md + "\n\n"
+                    except Exception as e:
+                        logger.warning(f"Failed to convert HTML to Markdown: {e}, using plain text")
+                        md_content += text_body + "\n\n"
+                elif text_body:
+                    md_content += text_body + "\n\n"
+                else:
+                    md_content += "[No readable content found]\n\n"
+
+                # Add attachments
+                attachments = message.get("attachments", [])
+                if attachments:
+                    md_content += "**Attachments:**\n\n"
+                    for att in attachments:
+                        size_kb = att["size"] / 1024 if att.get("size") else 0
+                        md_content += f"- {att['filename']} ({size_kb:.1f} KB)\n"
+                    md_content += "\n"
+
+                md_content += "---\n\n"
+
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(output_path, "w", encoding="utf-8") as f:
+                f.write(md_content)
+
+            logger.debug(f"Exported email thread to Markdown: {output_path}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to export email thread to Markdown: {e}")
+            return False
+
+    def export_emails(
+        self,
+        filters: GmailSearchFilter | None = None,
+        export_format: str = "md",
+        export_mode: Literal["thread", "individual"] = "thread",
+        output_directory: Path | None = None,
+        current_depth: int = 0,
+    ) -> dict[str, Path]:
+        """Export Gmail messages matching filters.
+
+        Args:
+            filters: Search filters (default: last 100 messages)
+            export_format: Export format ('json' or 'md')
+            export_mode: 'thread' groups by conversation, 'individual' exports each message
+            output_directory: Output directory (default: config.target_directory / 'emails')
+            current_depth: Current recursion depth for link following
+
+        Returns:
+            Dictionary mapping email/thread IDs to exported file paths
+        """
+        if filters is None:
+            filters = GmailSearchFilter()
+
+        if output_directory is None:
+            output_directory = self.config.target_directory / "emails"
+
+        if export_format not in self.EMAIL_EXPORT_FORMATS:
+            raise ValueError(f"Invalid export format: {export_format}. Must be 'json' or 'md'")
+
+        exported_files: dict[str, Path] = {}
+
+        logger.info(f"Starting Gmail export (mode: {export_mode}, format: {export_format})")
+
+        # Fetch messages
+        messages_metadata = list(self._fetch_messages_paginated(filters))
+        if not messages_metadata:
+            logger.info("No messages found matching filters")
+            return exported_files
+
+        logger.info(f"Found {len(messages_metadata)} messages")
+
+        # Fetch full message content
+        messages = []
+        for msg_meta in messages_metadata:
+            try:
+                message = self._fetch_message_content(msg_meta["id"])
+                messages.append(message)
+            except Exception as e:
+                logger.error(f"Failed to fetch message {msg_meta['id']}: {e}")
+
+        if export_mode == "thread":
+            # Group by thread
+            threads = self._group_messages_by_thread(messages)
+            logger.info(f"Grouped messages into {len(threads)} threads")
+
+            for thread_id, thread_messages in threads.items():
+                # Create safe filename
+                subject = (
+                    thread_messages[0].get("headers", {}).get("Subject", "no-subject")
+                    if thread_messages
+                    else "no-subject"
+                )
+                safe_subject = "".join(c if c.isalnum() or c in (" ", "-", "_") else "_" for c in subject)[:50]
+
+                # Organize by date
+                first_msg_date = thread_messages[0].get("internal_date", "0") if thread_messages else "0"
+                date_obj = datetime.fromtimestamp(int(first_msg_date) / 1000, tz=UTC) if first_msg_date != "0" else datetime.now(UTC)
+                date_dir = date_obj.strftime("%Y-%m")
+
+                thread_dir = output_directory / "threads" / date_dir
+                filename = f"thread_{thread_id}_{safe_subject}.{export_format}"
+                output_path = thread_dir / filename
+
+                # Export based on format
+                if export_format == "json":
+                    success = self._export_email_thread_as_json(thread_id, thread_messages, output_path)
+                else:  # md
+                    success = self._export_email_thread_as_markdown(thread_id, thread_messages, output_path)
+
+                if success:
+                    exported_files[thread_id] = output_path
+
+        else:  # individual mode
+            for message in messages:
+                message_id = message.get("id", "unknown")
+                subject = message.get("headers", {}).get("Subject", "no-subject")
+                safe_subject = "".join(c if c.isalnum() or c in (" ", "-", "_") else "_" for c in subject)[:50]
+
+                # Organize by date
+                msg_date = message.get("internal_date", "0")
+                date_obj = datetime.fromtimestamp(int(msg_date) / 1000, tz=UTC) if msg_date != "0" else datetime.now(UTC)
+                date_dir = date_obj.strftime("%Y-%m")
+
+                msg_dir = output_directory / "messages" / date_dir
+                filename = f"msg_{message_id}_{safe_subject}.{export_format}"
+                output_path = msg_dir / filename
+
+                # Export as single-message thread
+                if export_format == "json":
+                    success = self._export_email_thread_as_json(message_id, [message], output_path)
+                else:  # md
+                    success = self._export_email_thread_as_markdown(message_id, [message], output_path)
+
+                if success:
+                    exported_files[message_id] = output_path
+
+        logger.info(f"Exported {len(exported_files)} email {'threads' if export_mode == 'thread' else 'messages'}")
+
+        # Link following
+        if self.config.follow_links and current_depth < self.config.link_depth:
+            logger.info(f"Following Drive links (depth {current_depth + 1}/{self.config.link_depth})")
+            for message in messages:
+                text = message.get("text_body", "") + message.get("html_body", "")
+                links = self._extract_links_from_text(text)
+                for doc_id in links:
+                    if doc_id not in self._processed_docs:
+                        try:
+                            self.export_document(doc_id, current_depth=current_depth + 1)
+                        except Exception as e:
+                            logger.error(f"Failed to export linked document {doc_id}: {e}")
+
+        return exported_files
+
+    # ===== Calendar Export Methods =====
+
+    def list_calendars(self) -> list[dict[str, Any]]:
+        """List all accessible Google Calendars.
+
+        Returns:
+            List of calendar metadata dictionaries
+        """
+        calendar_list = self.calendar_service.calendarList().list().execute()
+        return calendar_list.get("items", [])
+
+    def get_calendar_event(self, event_id: str, calendar_id: str = "primary") -> dict[str, Any] | None:
+        """Get a single calendar event by ID.
+
+        Args:
+            event_id: The event ID
+            calendar_id: The calendar ID (default: "primary")
+
+        Returns:
+            Event dictionary or None if not found
+        """
+        try:
+            event = self.calendar_service.events().get(
+                calendarId=calendar_id,
+                eventId=event_id
+            ).execute()
+
+            # Add calendar ID to event for consistency with paginated results
+            event["_calendar_id"] = calendar_id
+
+            logger.info(f"Fetched event: {event.get('summary', 'Untitled')} ({event_id})")
+            return event
+        except Exception as e:
+            logger.error(f"Failed to fetch event {event_id}: {e}")
+            return None
+
+    def _fetch_events_paginated(
+        self, filters: CalendarEventFilter | None = None
+    ) -> Generator[dict[str, Any], None, None]:
+        """Fetch calendar events with pagination support.
+
+        Args:
+            filters: Event filters to apply
+
+        Yields:
+            Calendar event dictionaries
+        """
+        if filters is None:
+            filters = CalendarEventFilter()
+
+        calendar_ids = filters.get_calendar_ids()
+        total_yielded = 0
+
+        for calendar_id in calendar_ids:
+            logger.info(f"Fetching events from calendar: {calendar_id}")
+            next_page_token = None
+
+            while True:
+                # Calculate how many more events we need
+                remaining = filters.max_results - total_yielded
+                if remaining <= 0:
+                    break
+
+                request_params = {
+                    "calendarId": calendar_id,
+                    "maxResults": min(remaining, 2500),  # API max is 2500
+                    "singleEvents": filters.single_events,
+                    "orderBy": filters.order_by if filters.order_by == "startTime" and filters.single_events else None,
+                }
+
+                # Add time filters (Calendar API requires RFC3339 with timezone)
+                if filters.time_min:
+                    time_min = filters.time_min
+                    if time_min.tzinfo is None:
+                        # Assume UTC for naive datetimes
+                        time_min = time_min.replace(tzinfo=timezone.utc)
+                    request_params["timeMin"] = time_min.isoformat()
+                if filters.time_max:
+                    time_max = filters.time_max
+                    if time_max.tzinfo is None:
+                        # Assume UTC for naive datetimes
+                        time_max = time_max.replace(tzinfo=timezone.utc)
+                    request_params["timeMax"] = time_max.isoformat()
+
+                # Add text search
+                if filters.query:
+                    request_params["q"] = filters.query
+
+                if next_page_token:
+                    request_params["pageToken"] = next_page_token
+
+                # Remove None values
+                request_params = {k: v for k, v in request_params.items() if v is not None}
+
+                response = self.calendar_service.events().list(**request_params).execute()
+
+                events = response.get("items", [])
+                for event in events:
+                    if total_yielded >= filters.max_results:
+                        return
+                    # Add calendar_id to event for tracking
+                    event["_calendar_id"] = calendar_id
+                    yield event
+                    total_yielded += 1
+
+                next_page_token = response.get("nextPageToken")
+                if not next_page_token:
+                    break
+
+    def _export_calendar_event_as_json(self, event: dict[str, Any], output_path: Path) -> bool:
+        """Export calendar event as JSON.
+
+        Args:
+            event: Calendar event object from API
+            output_path: Path to save JSON file
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            # Extract Drive links from description
+            description = event.get("description", "")
+            drive_links = self._extract_links_from_text(description)
+
+            # Add Drive links from attachments
+            attachments = event.get("attachments", [])
+            for att in attachments:
+                file_url = att.get("fileUrl", "")
+                if "drive.google.com" in file_url:
+                    # Extract file ID from URL
+                    links = self._extract_links_from_text(file_url)
+                    drive_links.extend(links)
+
+            # Add metadata
+            export_data = {**event, "drive_links": list(set(drive_links)), "exported_at": datetime.now(UTC).isoformat()}
+
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(output_path, "w", encoding="utf-8") as f:
+                json.dump(export_data, f, indent=2, ensure_ascii=False, default=str)
+
+            logger.debug(f"Exported calendar event to JSON: {output_path}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to export calendar event to JSON: {e}")
+            return False
+
+    def _export_calendar_event_as_markdown(self, event: dict[str, Any], output_path: Path) -> bool:
+        """Export calendar event as Markdown with frontmatter.
+
+        Args:
+            event: Calendar event object from API
+            output_path: Path to save Markdown file
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            summary = event.get("summary", "(No title)")
+            description = event.get("description", "")
+            location = event.get("location", "")
+
+            # Extract start/end times
+            start = event.get("start", {})
+            end = event.get("end", {})
+            start_time = start.get("dateTime", start.get("date", ""))
+            end_time = end.get("dateTime", end.get("date", ""))
+
+            # Get organizer and attendees
+            organizer = event.get("organizer", {})
+            attendees = event.get("attendees", [])
+
+            # Generate frontmatter
+            frontmatter_data = {
+                "event_id": event.get("id", ""),
+                "calendar_id": event.get("_calendar_id", ""),
+                "summary": summary,
+                "start": start_time,
+                "end": end_time,
+                "location": location or None,
+                "attendees_count": len(attendees),
+                "exported_at": datetime.now(UTC).isoformat(),
+            }
+
+            if self.config.frontmatter_fields:
+                frontmatter_data.update(self.config.frontmatter_fields)
+
+            # Remove None values
+            frontmatter_data = {k: v for k, v in frontmatter_data.items() if v is not None}
+
+            yaml_content = yaml.dump(frontmatter_data, default_flow_style=False, allow_unicode=True, sort_keys=False)
+            md_content = f"---\n{yaml_content}---\n\n"
+
+            # Add event title
+            md_content += f"# {summary}\n\n"
+
+            # Add when/where
+            md_content += f"**When:** {start_time} - {end_time}\n\n"
+            if location:
+                md_content += f"**Where:** {location}\n\n"
+
+            # Add organizer
+            if organizer:
+                organizer_name = organizer.get("displayName", organizer.get("email", ""))
+                md_content += f"**Organizer:** {organizer_name}\n\n"
+
+            # Add attendees
+            if attendees:
+                md_content += "**Attendees:**\n\n"
+                for attendee in attendees:
+                    email = attendee.get("email", "")
+                    name = attendee.get("displayName", email)
+                    response = attendee.get("responseStatus", "needsAction")
+                    optional = " (optional)" if attendee.get("optional") else ""
+                    organizer_flag = " (organizer)" if attendee.get("organizer") else ""
+                    md_content += f"- {name} ({response}){optional}{organizer_flag}\n"
+                md_content += "\n"
+
+            # Add description
+            if description:
+                md_content += "## Description\n\n"
+                # Try to convert HTML to Markdown
+                if "<" in description and ">" in description:
+                    try:
+                        desc_md = convert_to_markdown(description)
+                        md_content += desc_md + "\n\n"
+                    except Exception as e:
+                        logger.warning(f"Failed to convert description HTML to Markdown: {e}")
+                        md_content += description + "\n\n"
+                else:
+                    md_content += description + "\n\n"
+
+            # Add attachments
+            attachments = event.get("attachments", [])
+            if attachments:
+                md_content += "**Attachments:**\n\n"
+                for att in attachments:
+                    title = att.get("title", "Untitled")
+                    file_url = att.get("fileUrl", "")
+                    md_content += f"- [{title}]({file_url})\n"
+                md_content += "\n"
+
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(output_path, "w", encoding="utf-8") as f:
+                f.write(md_content)
+
+            logger.debug(f"Exported calendar event to Markdown: {output_path}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to export calendar event to Markdown: {e}")
+            return False
+
+    def export_calendar_events(
+        self,
+        filters: CalendarEventFilter | None = None,
+        export_format: str = "md",
+        output_directory: Path | None = None,
+        current_depth: int = 0,
+    ) -> dict[str, Path]:
+        """Export Google Calendar events matching filters.
+
+        Args:
+            filters: Event filters (default: next 30 days from primary calendar)
+            export_format: Export format ('json' or 'md')
+            output_directory: Output directory (default: config.target_directory / 'calendar')
+            current_depth: Current recursion depth for link following
+
+        Returns:
+            Dictionary mapping event IDs to exported file paths
+        """
+        if filters is None:
+            # Default: primary calendar, next 30 days
+            filters = CalendarEventFilter(
+                time_min=datetime.now(UTC),
+                time_max=datetime.now(UTC).replace(day=datetime.now(UTC).day + 30) if datetime.now(UTC).day <= 28
+                    else datetime.now(UTC).replace(month=datetime.now(UTC).month + 1, day=1),
+            )
+
+        if output_directory is None:
+            output_directory = self.config.target_directory / "calendar"
+
+        if export_format not in self.CALENDAR_EXPORT_FORMATS:
+            raise ValueError(f"Invalid export format: {export_format}. Must be 'json' or 'md'")
+
+        exported_files: dict[str, Path] = {}
+
+        logger.info(f"Starting Calendar export (format: {export_format})")
+
+        # Fetch events
+        events = list(self._fetch_events_paginated(filters))
+        if not events:
+            logger.info("No events found matching filters")
+            return exported_files
+
+        logger.info(f"Found {len(events)} events")
+
+        for event in events:
+            event_id = event.get("id", "unknown")
+            summary = event.get("summary", "no-title")
+            safe_summary = "".join(c if c.isalnum() or c in (" ", "-", "_") else "_" for c in summary)[:50]
+
+            # Get calendar ID and start date for organization
+            calendar_id = event.get("_calendar_id", "primary")
+            safe_calendar_id = calendar_id.replace("@", "_at_").replace(".", "_")
+
+            # Organize by month
+            start = event.get("start", {})
+            start_time = start.get("dateTime", start.get("date", ""))
+            if start_time:
+                try:
+                    if "T" in start_time:
+                        date_obj = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
+                    else:
+                        date_obj = datetime.fromisoformat(start_time)
+                    date_dir = date_obj.strftime("%Y-%m")
+                except Exception:
+                    date_dir = datetime.now(UTC).strftime("%Y-%m")
+            else:
+                date_dir = datetime.now(UTC).strftime("%Y-%m")
+
+            event_dir = output_directory / safe_calendar_id / date_dir
+            filename = f"event_{event_id}_{safe_summary}.{export_format}"
+            output_path = event_dir / filename
+
+            # Export based on format
+            if export_format == "json":
+                success = self._export_calendar_event_as_json(event, output_path)
+            else:  # md
+                success = self._export_calendar_event_as_markdown(event, output_path)
+
+            if success:
+                exported_files[event_id] = output_path
+
+        logger.info(f"Exported {len(exported_files)} calendar events")
+
+        # Link following
+        if self.config.follow_links and current_depth < self.config.link_depth:
+            logger.info(f"Following Drive links (depth {current_depth + 1}/{self.config.link_depth})")
+            for event in events:
+                description = event.get("description", "")
+                links = self._extract_links_from_text(description)
+
+                # Also check attachments
+                for att in event.get("attachments", []):
+                    file_url = att.get("fileUrl", "")
+                    if "drive.google.com" in file_url:
+                        att_links = self._extract_links_from_text(file_url)
+                        links.extend(att_links)
+
+                for doc_id in links:
+                    if doc_id not in self._processed_docs:
+                        try:
+                            self.export_document(doc_id, current_depth=current_depth + 1)
+                        except Exception as e:
+                            logger.error(f"Failed to export linked document {doc_id}: {e}")
+
+        return exported_files

@@ -26,6 +26,7 @@ CLI usage::
 
 from .core.config import GoogleDriveExporterConfig
 from .core.exporter import GoogleDriveExporter
+from .core.filters import CalendarEventFilter, GmailSearchFilter
 from .core.types import DocumentConfig, DocumentType, ExportFormat
 
 __version__ = "0.1.0"
@@ -36,6 +37,8 @@ __all__ = [
     "DocumentType",
     "ExportFormat",
     "DocumentConfig",
+    "GmailSearchFilter",
+    "CalendarEventFilter",
     "__version__",
 ]
 

@@ -1,0 +1,588 @@
+{
+  "name": "gwt",
+  "version": "0.1.0",
+  "description": "Google Workspace Tools - Export and manage Google Drive documents",
+  "commands": {
+    "download": {
+      "name": "download",
+      "help": "Download one or more Google Drive documents.\n\nExamples:\n    gwt download https://docs.google.com/document/d/abc123/edit\n    gwt download abc123 def456 
+-f pdf -o ./downloads\n    gwt download https://docs.google.com/.../edit -d 2  # Follow links 2 levels deep\n    gwt download URL -o meetings/notes.md 
+--enable-frontmatter -m \"date=2024-01-15\" -m \"type=meeting\"\n    gwt download URL -o notes.md --enable-frontmatter --frontmatter-file meta.yaml\n    gwt download 
+SPREADSHEET_URL -f md -s combined  # Single markdown with all sheets\n    gwt download SPREADSHEET_URL -f md -s separate  # One markdown per sheet\n    gwt download 
+SPREADSHEET_URL -f md -s csv  # Legacy CSV export",
+      "options": [
+        {
+          "name": "output",
+          "type": "<typer.models.TyperPath object at 0x106512c50>",
+          "required": false,
+          "help": "Output directory or full path (with extension for single document)",
+          "flags": [
+            "--output",
+            "-o"
+          ],
+          "default": null,
+          "multiple": false
+        },
+        {
+          "name": "format",
+          "type": "STRING",
+          "required": false,
+          "help": "Export format (md, pdf, docx, html, xlsx, csv, pptx, etc.)",
+          "flags": [
+            "--format",
+            "-f"
+          ],
+          "default": "md",
+          "multiple": false
+        },
+        {
+          "name": "depth",
+          "type": "INT",
+          "required": false,
+          "help": "Link following depth (0-5). 0 disables link following.",
+          "flags": [
+            "--depth",
+            "-d"
+          ],
+          "default": 0,
+          "multiple": false
+        },
+        {
+          "name": "credentials",
+          "type": "<typer.models.TyperPath object at 0x106513590>",
+          "required": false,
+          "help": "Path to Google OAuth credentials file",
+          "flags": [
+            "--credentials",
+            "-c"
+          ],
+          "default": ".client_secret.googleusercontent.com.json",
+          "multiple": false
+        },
+        {
+          "name": "frontmatter",
+          "type": "STRING",
+          "required": false,
+          "help": "Add frontmatter field (format: key=value). Can be used multiple times.",
+          "flags": [
+            "--frontmatter",
+            "-m"
+          ],
+          "default": null,
+          "multiple": true
+        },
+        {
+          "name": "frontmatter_file",
+          "type": "<typer.models.TyperPath object at 0x106513050>",
+          "required": false,
+          "help": "Path to YAML file containing frontmatter fields",
+          "flags": [
+            "--frontmatter-file"
+          ],
+          "default": null,
+          "multiple": false
+        },
+        {
+          "name": "enable_frontmatter",
+          "type": "BOOL",
+          "required": false,
+          "help": "Enable YAML frontmatter in markdown files",
+          "flags": [
+            "--enable-frontmatter"
+          ],
+          "default": false,
+          "multiple": false
+        },
+        {
+          "name": "spreadsheet_mode",
+          "type": "STRING",
+          "required": false,
+          "help": "Spreadsheet export mode: 'combined' (single .md), 'separate' (one .md per sheet), 'csv' (legacy)",
+          "flags": [
+            "--spreadsheet-mode",
+            "-s"
+          ],
+          "default": "combined",
+          "multiple": false
+        },
+        {
+          "name": "keep_xlsx",
+          "type": "BOOL",
+          "required": false,
+          "help": "Keep intermediate XLSX files when converting spreadsheets to markdown",
+          "flags": [
+            "--keep-xlsx"
+          ],
+          "default": true,
+          "multiple": false
+        }
+      ],
+      "arguments": [
+        {
+          "name": "documents",
+          "type": "STRING",
+          "required": true,
+          "help": "Google Drive URLs or document IDs to download",
+          "multiple": false
+        }
+      ]
+    },
+    "mirror": {
+      "name": "mirror",
+      "help": "Mirror documents from a configuration file.\n\nThe config file uses a simple text format:\n    # Comments start with #\n    
+https://docs.google.com/document/d/ID/edit depth=2 # Optional comment\n    https://docs.google.com/document/d/ID/edit # Uses default depth=0\n\nExamples:\n    gwt mirror 
+sources.txt\n    gwt mirror documents.yaml -o ./mirror -f pdf",
+      "options": [
+        {
+          "name": "output",
+          "type": "<typer.models.TyperPath object at 0x106513d10>",
+          "required": false,
+          "help": "Output directory",
+          "flags": [
+            "--output",
+            "-o"
+          ],
+          "default": "exports",
+          "multiple": false
+        },
+        {
+          "name": "format",
+          "type": "STRING",
+          "required": false,
+          "help": "Override export format from config",
+          "flags": [
+            "--format",
+            "-f"
+          ],
+          "default": "md",
+          "multiple": false
+        },
+        {
+          "name": "credentials",
+          "type": "<typer.models.TyperPath object at 0x106513d50>",
+          "required": false,
+          "help": "Path to Google OAuth credentials file",
+          "flags": [
+            "--credentials",
+            "-c"
+          ],
+          "default": ".client_secret.googleusercontent.com.json",
+          "multiple": false
+        }
+      ],
+      "arguments": [
+        {
+          "name": "config_file",
+          "type": "<typer.models.TyperPath object at 0x106513dd0>",
+          "required": true,
+          "help": "Mirror configuration file (YAML or text format)",
+          "multiple": false
+        }
+      ]
+    },
+    "auth": {
+      "name": "auth",
+      "help": "Authenticate with Google Drive API.\n\nThis will open a browser window for OAuth authentication.\nThe token will be saved for future use.\n\nExamples:\n   
+gwt auth\n    gwt auth -c /path/to/credentials.json",
+      "options": [
+        {
+          "name": "credentials",
+          "type": "<typer.models.TyperPath object at 0x106518dd0>",
+          "required": false,
+          "help": "Path to Google OAuth credentials file",
+          "flags": [
+            "--credentials",
+            "-c"
+          ],
+          "default": ".client_secret.googleusercontent.com.json",
+          "multiple": false
+        },
+        {
+          "name": "token_path",
+          "type": "<typer.models.TyperPath object at 0x106518c90>",
+          "required": false,
+          "help": "Path to save OAuth token",
+          "flags": [
+            "--token",
+            "-t"
+          ],
+          "default": "tmp/token_drive.json",
+          "multiple": false
+        }
+      ],
+      "arguments": []
+    },
+    "whoami": {
+      "name": "whoami",
+      "help": "Show the currently authenticated Google user.\n\nExamples:\n    gwt whoami",
+      "options": [
+        {
+          "name": "credentials",
+          "type": "<typer.models.TyperPath object at 0x106518b50>",
+          "required": false,
+          "help": "Path to Google OAuth credentials file",
+          "flags": [
+            "--credentials",
+            "-c"
+          ],
+          "default": ".client_secret.googleusercontent.com.json",
+          "multiple": false
+        },
+        {
+          "name": "token_path",
+          "type": "<typer.models.TyperPath object at 0x106519210>",
+          "required": false,
+          "help": "Path to OAuth token",
+          "flags": [
+            "--token",
+            "-t"
+          ],
+          "default": "tmp/token_drive.json",
+          "multiple": false
+        }
+      ],
+      "arguments": []
+    },
+    "formats": {
+      "name": "formats",
+      "help": "List supported export formats for different document types.\n\nExamples:\n    gwt formats\n    gwt formats -t spreadsheet\n    gwt formats -t presentation 
+--json",
+      "options": [
+        {
+          "name": "doc_type",
+          "type": "STRING",
+          "required": false,
+          "help": "Document type (document, spreadsheet, presentation)",
+          "flags": [
+            "--type",
+            "-t"
+          ],
+          "default": "document",
+          "multiple": false
+        },
+        {
+          "name": "output_json",
+          "type": "BOOL",
+          "required": false,
+          "help": "Output as JSON",
+          "flags": [
+            "--json",
+            "-j"
+          ],
+          "default": false,
+          "multiple": false
+        }
+      ],
+      "arguments": []
+    },
+    "extract-id": {
+      "name": "extract-id",
+      "help": "Extract document ID from a Google Drive URL.\n\nExamples:\n    gwt extract-id https://docs.google.com/document/d/abc123/edit\n    gwt extract-id 
+\"https://docs.google.com/spreadsheets/d/xyz789/edit#gid=0\"",
+      "options": [],
+      "arguments": [
+        {
+          "name": "url",
+          "type": "STRING",
+          "required": true,
+          "help": "Google Drive URL to extract ID from",
+          "multiple": false
+        }
+      ]
+    },
+    "mail": {
+      "name": "mail",
+      "help": "Export Gmail messages to JSON or Markdown.\n\nExamples:\n    gwt mail -q \"from:boss@example.com\" -f md\n\n    gwt mail -a 2024-01-01 -l 
+work,important\n\n    gwt mail -q \"has:attachment\" -d 2",
+      "options": [
+        {
+          "name": "query",
+          "type": "STRING",
+          "required": false,
+          "help": "Gmail search query",
+          "flags": [
+            "--query",
+            "-q"
+          ],
+          "default": "",
+          "multiple": false
+        },
+        {
+          "name": "after",
+          "type": "STRING",
+          "required": false,
+          "help": "After date (YYYY-MM-DD)",
+          "flags": [
+            "--after",
+            "-a"
+          ],
+          "default": null,
+          "multiple": false
+        },
+        {
+          "name": "before",
+          "type": "STRING",
+          "required": false,
+          "help": "Before date (YYYY-MM-DD)",
+          "flags": [
+            "--before",
+            "-b"
+          ],
+          "default": null,
+          "multiple": false
+        },
+        {
+          "name": "labels",
+          "type": "STRING",
+          "required": false,
+          "help": "Comma-separated labels",
+          "flags": [
+            "--labels",
+            "-l"
+          ],
+          "default": null,
+          "multiple": false
+        },
+        {
+          "name": "max_results",
+          "type": "INT",
+          "required": false,
+          "help": "Maximum messages to fetch",
+          "flags": [
+            "--max",
+            "-n"
+          ],
+          "default": 100,
+          "multiple": false
+        },
+        {
+          "name": "export_format",
+          "type": "STRING",
+          "required": false,
+          "help": "Export format (json, md)",
+          "flags": [
+            "--format",
+            "-f"
+          ],
+          "default": "md",
+          "multiple": false
+        },
+        {
+          "name": "mode",
+          "type": "STRING",
+          "required": false,
+          "help": "Export mode (thread, individual)",
+          "flags": [
+            "--mode",
+            "-m"
+          ],
+          "default": "thread",
+          "multiple": false
+        },
+        {
+          "name": "output",
+          "type": "<typer.models.TyperPath object at 0x106519b50>",
+          "required": false,
+          "help": "Output directory",
+          "flags": [
+            "--output",
+            "-o"
+          ],
+          "default": "exports/emails",
+          "multiple": false
+        },
+        {
+          "name": "depth",
+          "type": "INT",
+          "required": false,
+          "help": "Link following depth",
+          "flags": [
+            "--depth",
+            "-d"
+          ],
+          "default": 0,
+          "multiple": false
+        },
+        {
+          "name": "credentials",
+          "type": "<typer.models.TyperPath object at 0x106519c50>",
+          "required": false,
+          "help": "Path to credentials file",
+          "flags": [
+            "--credentials",
+            "-c"
+          ],
+          "default": ".client_secret.googleusercontent.com.json",
+          "multiple": false
+        },
+        {
+          "name": "token",
+          "type": "<typer.models.TyperPath object at 0x10651ae90>",
+          "required": false,
+          "help": "Path to token file",
+          "flags": [
+            "--token",
+            "-t"
+          ],
+          "default": "tmp/token_drive.json",
+          "multiple": false
+        }
+      ],
+      "arguments": []
+    },
+    "calendar": {
+      "name": "calendar",
+      "help": "Export Google Calendar events to JSON or Markdown.\n\nIf no filters are provided, lists all accessible calendars.\n\nExamples:\n    gwt calendar           
+# List calendars\n\n    gwt calendar -a 2024-01-01 -b 2024-12-31  # Export events\n\n    gwt calendar --calendar work -q \"sprint\"\n\n    gwt calendar -d 2              
+# Follow links in events",
+      "options": [
+        {
+          "name": "calendar_id",
+          "type": "STRING",
+          "required": false,
+          "help": "Calendar ID",
+          "flags": [
+            "--calendar"
+          ],
+          "default": "primary",
+          "multiple": false
+        },
+        {
+          "name": "after",
+          "type": "STRING",
+          "required": false,
+          "help": "After date (YYYY-MM-DD)",
+          "flags": [
+            "--after",
+            "-a"
+          ],
+          "default": null,
+          "multiple": false
+        },
+        {
+          "name": "before",
+          "type": "STRING",
+          "required": false,
+          "help": "Before date (YYYY-MM-DD)",
+          "flags": [
+            "--before",
+            "-b"
+          ],
+          "default": null,
+          "multiple": false
+        },
+        {
+          "name": "query",
+          "type": "STRING",
+          "required": false,
+          "help": "Search query",
+          "flags": [
+            "--query",
+            "-q"
+          ],
+          "default": "",
+          "multiple": false
+        },
+        {
+          "name": "max_results",
+          "type": "INT",
+          "required": false,
+          "help": "Maximum events to fetch",
+          "flags": [
+            "--max",
+            "-n"
+          ],
+          "default": 250,
+          "multiple": false
+        },
+        {
+          "name": "export_format",
+          "type": "STRING",
+          "required": false,
+          "help": "Export format (json, md)",
+          "flags": [
+            "--format",
+            "-f"
+          ],
+          "default": "md",
+          "multiple": false
+        },
+        {
+          "name": "output",
+          "type": "<typer.models.TyperPath object at 0x10651b8d0>",
+          "required": false,
+          "help": "Output directory",
+          "flags": [
+            "--output",
+            "-o"
+          ],
+          "default": "exports/calendar",
+          "multiple": false
+        },
+        {
+          "name": "depth",
+          "type": "INT",
+          "required": false,
+          "help": "Link following depth",
+          "flags": [
+            "--depth",
+            "-d"
+          ],
+          "default": 0,
+          "multiple": false
+        },
+        {
+          "name": "credentials",
+          "type": "<typer.models.TyperPath object at 0x10651bb90>",
+          "required": false,
+          "help": "Path to credentials file",
+          "flags": [
+            "--credentials",
+            "-c"
+          ],
+          "default": ".client_secret.googleusercontent.com.json",
+          "multiple": false
+        },
+        {
+          "name": "token",
+          "type": "<typer.models.TyperPath object at 0x10651b190>",
+          "required": false,
+          "help": "Path to token file",
+          "flags": [
+            "--token",
+            "-t"
+          ],
+          "default": "tmp/token_drive.json",
+          "multiple": false
+        }
+      ],
+      "arguments": []
+    },
+    "dump-schema": {
+      "name": "dump-schema",
+      "help": "Dump CLI schema showing all commands and options.\n\nUseful for documentation generation and shell completion debugging.\n\nExamples:\n    gwt 
+dump-schema\n    gwt dump-schema -f yaml",
+      "options": [
+        {
+          "name": "output_format",
+          "type": "STRING",
+          "required": false,
+          "help": "Output format (json, yaml)",
+          "flags": [
+            "--format",
+            "-f"
+          ],
+          "default": "json",
+          "multiple": false
+        }
+      ],
+      "arguments": []
+    },
+    "version": {
+      "name": "version",
+      "help": "Show version information.",
+      "options": [],
+      "arguments": []
+    }
+  }
+}

@@ -10,11 +10,13 @@ A Python toolkit for exporting and managing Google Drive documents with CLI and 
 ## Features
 
 - **Multi-format Export**: Export Google Docs, Sheets, and Slides to various formats (PDF, DOCX, Markdown, CSV, XLSX, PPTX, etc.)
+- **Gmail Export**: Export email threads to JSON or Markdown with search, filters, and date ranges
+- **Calendar Export**: Export Google Calendar events to JSON or Markdown with time ranges and queries
 - **HTML to Markdown**: Automatic conversion of Google Docs to clean Markdown (using html-to-markdown 2.14+)
 - **Spreadsheet → Markdown**: Export Google Sheets as LLM-optimized markdown tables (using Microsoft MarkItDown)
 - **Frontmatter Support**: Add YAML frontmatter to markdown files with custom metadata
 - **Custom Output Paths**: Export to specific file paths with custom names
-- **Link Following**: Recursively export linked documents up to configurable depth
+- **Link Following**: Recursively export linked documents (including from emails/calendar) up to configurable depth
 - **Mirror Configuration**: Batch export documents from a configuration file
 - **CLI Tool**: Full-featured command-line interface (`gwt`)
 - **Agent Integration**: Optional Agno toolkit for AI assistant workflows
@@ -54,7 +56,115 @@ gwt whoami
 
 # List supported formats
 gwt formats -t spreadsheet
+
+# Export Gmail messages
+gwt mail --query "from:boss@example.com" -f md
+
+# Export calendar events
+gwt calendar --after 2024-01-01 --before 2024-12-31
+
+# List calendars
+gwt calendar  # No filters = list mode
+
+# Machine-readable JSON output (for automation/LLMs)
+gwt --json download URL -f md
+gwt --json mail --query "project alpha"
+gwt --json calendar --after 2024-01-01
 ```
+
+### Machine-Readable Output (JSON)
+
+All data export commands support a global `--json` flag for structured, machine-readable output. This is ideal for:
+- **CI/CD pipelines** and automation scripts
+- **LLM consumption** (Claude, GPT, etc.) for document processing
+- **Integration** with other tools and workflows
+- **Programmatic parsing** without regex or text manipulation
+
+```bash
+# Download with JSON output
+gwt --json download https://docs.google.com/.../edit -f md
+
+# Export calendar events as JSON
+gwt --json calendar --after 2024-01-01 --before 2024-12-31
+
+# Mirror documents with structured output
+gwt --json mirror sources.txt -o ./exports
+
+# List calendars in JSON format
+gwt --json calendar
+```
+
+**Example JSON output (download command):**
+```json
+{
+  "command": "download",
+  "success": true,
+  "timestamp": "2024-01-15T10:30:00Z",
+  "version": "0.3.0",
+  "errors": [],
+  "documents": [
+    {
+      "document_id": "abc123",
+      "title": "Project Documentation",
+      "source_url": "https://docs.google.com/document/d/abc123/edit",
+      "doc_type": "document",
+      "files": [
+        {
+          "format": "md",
+          "path": "/absolute/path/to/exports/Project_Documentation.md",
+          "size_bytes": 15420
+        }
+      ],
+      "link_following_depth": 2,
+      "linked_documents_count": 3,
+      "errors": []
+    }
+  ],
+  "total_files_exported": 4,
+  "output_directory": "/absolute/path/to/exports",
+  "link_following_enabled": true,
+  "max_link_depth": 2
+}
+```
+
+**Example JSON output (calendar list):**
+```json
+{
+  "command": "calendar",
+  "success": true,
+  "timestamp": "2024-01-15T10:30:00Z",
+  "version": "0.3.0",
+  "errors": [],
+  "calendars": [
+    {
+      "id": "primary",
+      "summary": "My Calendar",
+      "primary": true
+    },
+    {
+      "id": "work@company.com",
+      "summary": "Work Calendar",
+      "primary": false
+    }
+  ],
+  "total_count": 2
+}
+```
+
+**JSON output characteristics:**
+- **Flat structure**: Minimal nesting for easier parsing
+- **Self-documenting**: Clear field names and types
+- **Complete metadata**: Timestamps, versions, file sizes, error tracking
+- **Absolute paths**: Full file paths for reliable access
+- **Error handling**: Valid JSON even on failures with error details
+
+**Supported commands:**
+- `download` - Document export results
+- `mail` - Email thread/message export
+- `calendar` - Calendar events or calendar list
+- `mirror` - Batch document mirroring
+
+**Note:** The `--json` flag outputs structured data to stdout while suppressing progress messages. Errors and warnings are logged to stderr.
 
 ### Frontmatter Support
 
@@ -153,6 +263,106 @@ gwt download SPREADSHEET_URL -f md --no-keep-xlsx  # Remove after conversion
 - **Multi-sheet support**: All sheets in one context-ready document
 - **Intermediate XLSX preserved**: Keep the original Excel file for manual review
 
+### Gmail Export
+
+Export Gmail messages with full search capabilities and flexible output formats:
+
+```bash
+# Export by search query
+gwt mail --query "from:boss@example.com subject:meeting"
+
+# Export by date range
+gwt mail --after 2024-01-01 --before 2024-12-31
+
+# Filter by labels
+gwt mail --labels work,important
+
+# Export with attachments query
+gwt mail --query "has:attachment" -n 50
+
+# Export as JSON (thread-aware)
+gwt mail --query "project alpha" -f json
+
+# Follow Google Drive links in emails
+gwt mail --query "has:attachment" --depth 2
+```
+
+**Export modes:**
+- **`thread`** (default): Groups messages by conversation thread
+- **`individual`**: Each message exported separately
+
+**Output organization:**
+```
+exports/emails/
+├── threads/
+│   └── 2024-01/
+│       ├── thread_abc123_meeting-notes.md
+│       └── thread_def456_budget-review.json
+└── messages/  # (individual mode)
+    └── 2024-01/
+        └── msg_xyz789_invoice.md
+```
+
+**Markdown format includes:**
+- YAML frontmatter with thread metadata, participants, labels
+- Message-by-message breakdown with headers (From, To, Cc, Date)
+- HTML→Markdown conversion for email bodies
+- Attachment metadata (filename, size)
+- Extracted Google Drive links
+
+**JSON format includes:**
+- Complete thread structure with all messages
+- Full headers, bodies (text + HTML), attachment metadata
+- Automatically extracted Drive links for link following
+
+### Google Calendar Export
+
+Export calendar events with flexible time ranges and formatting:
+
+```bash
+# Export events from date range
+gwt calendar --after 2024-01-01 --before 2024-03-31
+
+# Export from specific calendar
+gwt calendar --calendar work@company.com --after 2024-01-01
+
+# Search events by keyword
+gwt calendar --query "sprint planning" -n 100
+
+# Export as JSON
+gwt calendar -f json --after 2024-01-01
+
+# List all accessible calendars
+gwt calendar  # No filters = list mode
+
+# Follow Drive links in event descriptions
+gwt calendar --depth 2 --after 2024-01-01
+```
+
+**Output organization:**
+```
+exports/calendar/
+├── primary/
+│   └── 2024-01/
+│       ├── event_abc123_team-meeting_2024-01-15.md
+│       └── event_def456_planning-session_2024-01-20.md
+└── work_company_com/
+    └── 2024-02/
+        └── event_xyz789_all-hands_2024-02-01.json
+```
+
+**Markdown format includes:**
+- YAML frontmatter with event metadata (ID, calendar, start/end times, attendee count)
+- Event details (when, where, organizer)
+- Attendee list with RSVP status and optional/organizer flags
+- HTML→Markdown conversion for descriptions
+- Attachment links (Google Drive documents)
+
+**JSON format includes:**
+- Complete event data from Calendar API
+- Full attendee details, recurrence rules, attachments
+- Automatically extracted Drive links
+
 ### Custom Output Paths
 
 Export to specific file paths instead of using auto-generated names:
@@ -214,6 +424,71 @@ exporter.export_document("https://docs.google.com/spreadsheets/d/xyz789/edit")
 
 # Mirror from config file
 exporter.mirror_documents(Path("sources.txt"))
+
+# Export Gmail messages
+from google_workspace_tools import GmailSearchFilter
+
+gmail_filter = GmailSearchFilter(
+    query="from:boss@example.com",
+    after_date=datetime(2024, 1, 1),
+    labels=["work", "important"],
+    max_results=100
+)
+
+config = GoogleDriveExporterConfig(
+    credentials_path=Path(".client_secret.googleusercontent.com.json"),
+    target_directory=Path("./exports"),
+)
+exporter = GoogleDriveExporter(config)
+
+# Export emails as markdown (thread mode by default)
+exported_emails = exporter.export_emails(
+    filters=gmail_filter,
+    export_format="md",
+    export_mode="thread",  # or "individual"
+    output_directory=Path("./exports/emails"),
+)
+
+# Export Google Calendar events
+from google_workspace_tools import CalendarEventFilter
+
+calendar_filter = CalendarEventFilter(
+    time_min=datetime(2024, 1, 1),
+    time_max=datetime(2024, 12, 31),
+    calendar_ids=["work@company.com", "personal@gmail.com"],
+    query="sprint planning",
+    max_results=250
+)
+
+exported_events = exporter.export_calendar_events(
+    filters=calendar_filter,
+    export_format="md",
+    output_directory=Path("./exports/calendar"),
+)
+
+# List all calendars
+calendars = exporter.list_calendars()
+for cal in calendars:
+    print(f"{cal['summary']}: {cal['id']}")
+
+# Export with link following from emails/calendar
+config_with_links = GoogleDriveExporterConfig(
+    follow_links=True,
+    link_depth=2
+)
+exporter = GoogleDriveExporter(config_with_links)
+
+# Gmail links will be followed (Drive docs attached or linked in emails)
+exported = exporter.export_emails(
+    filters=GmailSearchFilter(query="has:attachment"),
+    export_format="md"
+)
+
+# Calendar links will be followed (Drive docs attached or in descriptions)
+exported = exporter.export_calendar_events(
+    filters=CalendarEventFilter(query="meeting"),
+    export_format="md"
+)
 ```
 
 ### Agno Toolkit (for AI Agents)
@@ -347,12 +622,43 @@ Cell A1 comment:
 ## Authentication
 
 1. Create a project in [Google Cloud Console](https://console.cloud.google.com/)
-2. Enable the Google Drive API, Docs API, Sheets API, and Slides API
-3. Create OAuth 2.0 credentials (Desktop app)
+2. Enable the following APIs:
+   - Google Drive API
+   - Google Docs API
+   - Google Sheets API
+   - Google Slides API
+   - **Gmail API** (for email export)
+   - **Google Calendar API** (for calendar export)
+3. Create OAuth 2.0 credentials (**Web application**, not Desktop)
+   - Add authorized redirect URI: `http://localhost:47621/`
 4. Download the credentials JSON file
 5. Run `gwt auth -c /path/to/credentials.json`
 
 The tool will open a browser for OAuth authentication and save the token for future use.
+
+### OAuth Scopes
+
+The tool requests the following read-only scopes:
+- `drive.readonly` - Access to Google Drive files
+- `documents.readonly` - Access to Google Docs
+- `spreadsheets.readonly` - Access to Google Sheets
+- `presentations.readonly` - Access to Google Slides
+- **`gmail.readonly`** - Access to Gmail messages (for email export)
+- **`calendar.readonly`** - Access to Google Calendar events (for calendar export)
+
+### Re-authentication After Scope Changes
+
+If you've already authenticated and then upgrade to a version with new scopes (e.g., Gmail/Calendar support), you'll need to re-authenticate:
+
+```bash
+# Delete existing token
+rm tmp/token_drive.json
+
+# Re-authenticate with new scopes
+gwt auth
+```
+
+The tool will automatically detect scope mismatches and prompt for re-authentication when needed.
 
 ## Development
 

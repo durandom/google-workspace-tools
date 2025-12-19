@@ -12,6 +12,18 @@ wheels/
 # OAuth credentials and tokens
 .client_secret.googleusercontent.com.json
 tmp/
+.tmp/
+
+#test
+test_export_output/
+.coverage
 
 # Exported documents
 exports/
+meetings/
+
+meeting_notes.py
+.meeting_notes*
+
+# AI
+.claude/settings.local.json
