@@ -30,6 +30,16 @@ class Settings(BaseSettings):
         description="Path to cached OAuth token",
     )
 
+    # Keyring settings
+    use_keyring: bool = Field(
+        default=True,
+        description="Use keyring for credential storage if available",
+    )
+    keyring_service_name: str = Field(
+        default="google-workspace-tools",
+        description="Service name used for keyring storage",
+    )
+
     # Export settings
     target_directory: Path = Field(
         default=Path("exports"),

@@ -6,7 +6,7 @@ import io
 import json
 import re
 from collections.abc import Generator
-from datetime import UTC, datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal, cast
 from urllib.parse import parse_qs, urlparse
@@ -23,6 +23,7 @@ from loguru import logger
 
 from .config import GoogleDriveExporterConfig
 from .filters import CalendarEventFilter, GmailSearchFilter
+from .storage import CredentialStorage, StoredCredentials, get_credential_storage
 from .types import DocumentConfig, DocumentType, ExportFormat
 
 
@@ -156,58 +157,160 @@ class GoogleDriveExporter:
         Returns:
             Authenticated credentials.
         """
+        # Get appropriate storage backend
+        storage = get_credential_storage(
+            use_keyring=self.config.use_keyring,
+            fallback_to_file=self.config.keyring_fallback_to_file,
+            service_name=self.config.keyring_service_name,
+            token_path=self.config.token_path,
+            credentials_path=self.config.credentials_path,
+        )
+
         creds = None
-
-        # Check if scopes have changed (requires re-authentication, not refresh)
         scopes_match = True
-        if self.config.token_path.exists():
-            logger.debug(f"Loading credentials from {self.config.token_path}")
-            # Read scopes from token file before loading credentials
-            with open(self.config.token_path) as f:
-                token_data = json.load(f)
-                token_scopes = set(token_data.get("scopes", []))
-                required_scopes = set(self.config.scopes)
-                scopes_match = required_scopes <= token_scopes
-                if not scopes_match:
-                    missing = required_scopes - token_scopes
-                    logger.info(f"Scopes changed, re-authentication required. Missing: {missing}")
+        stored: StoredCredentials | None = None
 
-            if scopes_match:
-                creds = Credentials.from_authorized_user_file(str(self.config.token_path), self.config.scopes)
+        # Try to load existing credentials
+        stored = storage.load()
+        if stored and stored.token_data:
+            token_scopes = set(stored.token_data.get("scopes", []))
+            required_scopes = set(self.config.scopes)
+            scopes_match = required_scopes <= token_scopes
+
+            if not scopes_match:
+                missing = required_scopes - token_scopes
+                logger.info(f"Scopes changed, re-authentication required. Missing: {missing}")
+            else:
+                # Reconstruct credentials from stored data
+                logger.debug("Loading credentials from storage")
+                creds = Credentials.from_authorized_user_info(stored.token_data, self.config.scopes)
 
         if not creds or not creds.valid or not scopes_match:
             if creds and creds.expired and creds.refresh_token and scopes_match:
                 logger.info("Refreshing expired credentials")
                 creds.refresh(google.auth.transport.requests.Request())
-            else:
-                if not self.config.credentials_path.exists():
-                    raise FileNotFoundError(f"Credentials file not found: {self.config.credentials_path}")
 
-                logger.info("Running OAuth flow for new credentials")
-                flow = InstalledAppFlow.from_client_secrets_file(str(self.config.credentials_path), self.config.scopes)
+                # Save refreshed credentials
+                self._save_credentials(creds, storage, stored)
+            else:
+                # Try to get client credentials from keyring first
+                client_creds_data = self._get_client_credentials(storage)
+
+                if client_creds_data is None:
+                    raise FileNotFoundError(
+                        f"Client credentials not found. Either:\n"
+                        f"  1. Place credentials file at: {self.config.credentials_path}\n"
+                        f"  2. Import to keyring: gwt credentials import -c <file>"
+                    )
 
                 # Check credential type
-                try:
-                    with open(self.config.credentials_path) as f:
-                        creds_data = json.load(f)
-                        if "installed" in creds_data:
-                            raise ValueError(
-                                "Wrong kind of credentials file found (Desktop instead of Web application).\n"
-                                "Please create Web application credentials with authorized redirect URI:\n"
-                                "http://localhost:47621/\n\n"
-                                "https://console.cloud.google.com/apis/credentials"
-                            )
-                except (json.JSONDecodeError, KeyError):
-                    pass  # Let the OAuth flow handle invalid credential files
+                if "installed" in client_creds_data:
+                    raise ValueError(
+                        "Wrong kind of credentials file found (Desktop instead of Web application).\n"
+                        "Please create Web application credentials with authorized redirect URI:\n"
+                        "http://localhost:47621/\n\n"
+                        "https://console.cloud.google.com/apis/credentials"
+                    )
 
-                creds = flow.run_local_server(port=47621)
+                logger.info("Running OAuth flow for new credentials")
+                flow = InstalledAppFlow.from_client_config(client_creds_data, self.config.scopes)
 
-            # Save credentials for next run
-            self.config.token_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(self.config.token_path, "w") as token:
-                token.write(creds.to_json())
+                # Force consent to ensure we get a refresh_token
+                creds = flow.run_local_server(
+                    port=47621,
+                    prompt="consent",
+                    access_type="offline",
+                )
+
+                # Get user email for keyring key
+                email = self._get_user_email_from_creds(creds)
+
+                # Save new credentials
+                self._save_credentials(creds, storage, email=email)
 
         return cast(Credentials, creds)
+
+    def _save_credentials(
+        self,
+        creds: Credentials,
+        storage: CredentialStorage,
+        existing: StoredCredentials | None = None,
+        email: str | None = None,
+    ) -> None:
+        """Save credentials to storage backend.
+
+        Args:
+            creds: Google credentials object
+            storage: Storage backend to use
+            existing: Existing stored credentials (for preserving email)
+            email: User email for keyring key
+        """
+        # Parse credentials to dict
+        token_data = json.loads(creds.to_json())
+
+        stored = StoredCredentials(
+            token_data=token_data,
+            client_id=token_data.get("client_id"),
+            client_secret=token_data.get("client_secret"),
+            email=email or (existing.email if existing else None),
+        )
+
+        if storage.save(stored):
+            logger.debug("Credentials saved to storage")
+        else:
+            logger.warning("Failed to save credentials to storage")
+
+    def _get_user_email_from_creds(self, creds: Credentials) -> str | None:
+        """Get user email after authentication for keyring key.
+
+        Args:
+            creds: Google credentials object
+
+        Returns:
+            User email or None if retrieval failed
+        """
+        try:
+            # Use Drive API's about endpoint which works with drive.readonly scope
+            service = build("drive", "v3", credentials=creds)
+            about = service.about().get(fields="user(emailAddress)").execute()
+            email = about.get("user", {}).get("emailAddress")
+            logger.debug(f"Retrieved user email: {email}")
+            return email
+        except Exception as e:
+            logger.warning(f"Could not get user email: {e}")
+            return None
+
+    def _get_client_credentials(self, storage: CredentialStorage) -> dict[str, Any] | None:
+        """Get OAuth client credentials from keyring or file.
+
+        Tries keyring first (if available), then falls back to file.
+
+        Args:
+            storage: The credential storage backend
+
+        Returns:
+            Client credentials dict or None if not found
+        """
+        from .storage import KeyringCredentialStorage
+
+        # Try keyring first if storage is keyring-based
+        if isinstance(storage, KeyringCredentialStorage):
+            client_creds = storage.load_client_credentials()
+            if client_creds:
+                logger.debug("Loaded client credentials from keyring")
+                return client_creds
+
+        # Fall back to file
+        if self.config.credentials_path.exists():
+            try:
+                with open(self.config.credentials_path) as f:
+                    client_creds = json.load(f)
+                    logger.debug(f"Loaded client credentials from {self.config.credentials_path}")
+                    return dict(client_creds) if isinstance(client_creds, dict) else None
+            except (json.JSONDecodeError, OSError) as e:
+                logger.warning(f"Failed to load credentials file: {e}")
+
+        return None
 
     def get_authenticated_user_info(self) -> dict:
         """Get information about the currently authenticated user.
@@ -394,9 +497,7 @@ class GoogleDriveExporter:
                     # Add frontmatter if enabled
                     if self.config.enable_frontmatter:
                         url = source_url or f"https://drive.google.com/file/d/{document_id}"
-                        frontmatter = self._generate_frontmatter(
-                            document_id, title, url, DocumentType.DOCUMENT
-                        )
+                        frontmatter = self._generate_frontmatter(document_id, title, url, DocumentType.DOCUMENT)
                         f.write(frontmatter)
                     f.write(text_content)
             else:
@@ -1586,15 +1687,11 @@ class GoogleDriveExporter:
 
         # Sort messages within each thread by internal_date
         for thread_id in threads:
-            threads[thread_id].sort(
-                key=lambda m: int(m.get("internal_date", 0)) if m.get("internal_date") else 0
-            )
+            threads[thread_id].sort(key=lambda m: int(m.get("internal_date", 0)) if m.get("internal_date") else 0)
 
         return threads
 
-    def _export_email_thread_as_json(
-        self, thread_id: str, messages: list[dict[str, Any]], output_path: Path
-    ) -> bool:
+    def _export_email_thread_as_json(self, thread_id: str, messages: list[dict[str, Any]], output_path: Path) -> bool:
         """Export email thread as JSON.
 
         Args:
@@ -1804,7 +1901,11 @@ class GoogleDriveExporter:
 
                 # Organize by date
                 first_msg_date = thread_messages[0].get("internal_date", "0") if thread_messages else "0"
-                date_obj = datetime.fromtimestamp(int(first_msg_date) / 1000, tz=UTC) if first_msg_date != "0" else datetime.now(UTC)
+                date_obj = (
+                    datetime.fromtimestamp(int(first_msg_date) / 1000, tz=UTC)
+                    if first_msg_date != "0"
+                    else datetime.now(UTC)
+                )
                 date_dir = date_obj.strftime("%Y-%m")
 
                 thread_dir = output_directory / "threads" / date_dir
@@ -1828,7 +1929,9 @@ class GoogleDriveExporter:
 
                 # Organize by date
                 msg_date = message.get("internal_date", "0")
-                date_obj = datetime.fromtimestamp(int(msg_date) / 1000, tz=UTC) if msg_date != "0" else datetime.now(UTC)
+                date_obj = (
+                    datetime.fromtimestamp(int(msg_date) / 1000, tz=UTC) if msg_date != "0" else datetime.now(UTC)
+                )
                 date_dir = date_obj.strftime("%Y-%m")
 
                 msg_dir = output_directory / "messages" / date_dir
@@ -1883,10 +1986,7 @@ class GoogleDriveExporter:
             Event dictionary or None if not found
         """
         try:
-            event = self.calendar_service.events().get(
-                calendarId=calendar_id,
-                eventId=event_id
-            ).execute()
+            event = self.calendar_service.events().get(calendarId=calendar_id, eventId=event_id).execute()
 
             # Add calendar ID to event for consistency with paginated results
             event["_calendar_id"] = calendar_id
@@ -1936,13 +2036,13 @@ class GoogleDriveExporter:
                     time_min = filters.time_min
                     if time_min.tzinfo is None:
                         # Assume UTC for naive datetimes
-                        time_min = time_min.replace(tzinfo=timezone.utc)
+                        time_min = time_min.replace(tzinfo=UTC)
                     request_params["timeMin"] = time_min.isoformat()
                 if filters.time_max:
                     time_max = filters.time_max
                     if time_max.tzinfo is None:
                         # Assume UTC for naive datetimes
-                        time_max = time_max.replace(tzinfo=timezone.utc)
+                        time_max = time_max.replace(tzinfo=UTC)
                     request_params["timeMax"] = time_max.isoformat()
 
                 # Add text search
@@ -2136,8 +2236,9 @@ class GoogleDriveExporter:
             # Default: primary calendar, next 30 days
             filters = CalendarEventFilter(
                 time_min=datetime.now(UTC),
-                time_max=datetime.now(UTC).replace(day=datetime.now(UTC).day + 30) if datetime.now(UTC).day <= 28
-                    else datetime.now(UTC).replace(month=datetime.now(UTC).month + 1, day=1),
+                time_max=datetime.now(UTC).replace(day=datetime.now(UTC).day + 30)
+                if datetime.now(UTC).day <= 28
+                else datetime.now(UTC).replace(month=datetime.now(UTC).month + 1, day=1),
             )
 
         if output_directory is None:

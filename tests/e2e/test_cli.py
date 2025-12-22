@@ -17,7 +17,7 @@ class TestCLIHelp:
         assert "Google Workspace Tools" in result.stdout
         assert "download" in result.stdout
         assert "mirror" in result.stdout
-        assert "auth" in result.stdout
+        assert "credentials" in result.stdout
 
     def test_download_help(self):
         """Test download command help."""
@@ -34,11 +34,14 @@ class TestCLIHelp:
         assert result.exit_code == 0
         assert "Mirror documents from a configuration file" in result.stdout
 
-    def test_auth_help(self):
-        """Test auth command help."""
-        result = runner.invoke(app, ["auth", "--help"])
+    def test_credentials_help(self):
+        """Test credentials command help."""
+        result = runner.invoke(app, ["credentials", "--help"])
         assert result.exit_code == 0
-        assert "Authenticate with Google Drive API" in result.stdout
+        assert "Manage Google OAuth credentials" in result.stdout
+        assert "login" in result.stdout
+        assert "logout" in result.stdout
+        assert "status" in result.stdout
 
     def test_formats_help(self):
         """Test formats command help."""

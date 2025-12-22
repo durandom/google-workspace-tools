@@ -67,6 +67,9 @@ Issues = "https://github.com/durandom/google-workspace-tools/issues"
 agno = [
     "agno>=2.0.0,<3.0",
 ]
+keyring = [
+    "keyring>=25.0.0",
+]
 
 # CLI entry point
 [project.scripts]

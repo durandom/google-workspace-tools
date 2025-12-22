@@ -1,7 +1,7 @@
 """CLI application for Google Workspace Tools."""
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any, Literal, cast
 
@@ -31,7 +31,6 @@ from .schemas import (
     MirrorDocumentResult,
     MirrorOutput,
 )
-from .utils import format_relative_path, get_file_size
 
 console = Console()
 
@@ -425,109 +424,6 @@ def mirror(
 
 
 @app.command()
-def auth(
-    credentials: Annotated[
-        Path,
-        typer.Option("--credentials", "-c", help="Path to Google OAuth credentials file"),
-    ] = Path(".client_secret.googleusercontent.com.json"),
-    token_path: Annotated[
-        Path,
-        typer.Option("--token", "-t", help="Path to save OAuth token"),
-    ] = Path("tmp/token_drive.json"),
-) -> None:
-    """Authenticate with Google Drive API.
-
-    This will open a browser window for OAuth authentication.
-    The token will be saved for future use.
-
-    Examples:
-        gwt auth
-        gwt auth -c /path/to/credentials.json
-    """
-    if not credentials.exists():
-        console.print(f"[red]Error: Credentials file not found: {credentials}[/red]")
-        console.print("\n[dim]Download OAuth credentials from Google Cloud Console:[/dim]")
-        console.print("[dim]https://console.cloud.google.com/apis/credentials[/dim]")
-        console.print("\n[yellow]Important:[/yellow] Create a [cyan]Web application[/cyan] credential (not Desktop)")
-        console.print("[dim]When configuring, add this authorized redirect URI:[/dim]")
-        console.print("[cyan]http://localhost:47621/[/cyan]")
-        raise typer.Exit(1)
-
-    config = GoogleDriveExporterConfig(
-        credentials_path=credentials,
-        token_path=token_path,
-    )
-
-    exporter = GoogleDriveExporter(config)
-
-    console.print("[bold]Starting Google OAuth authentication...[/bold]")
-    console.print("[dim]A browser window will open for authentication[/dim]\n")
-
-    try:
-        # Trigger authentication by accessing the service
-        _ = exporter.service
-
-        # Get user info to confirm
-        user_info = exporter.get_authenticated_user_info()
-        if user_info:
-            console.print("[green]Authentication successful![/green]")
-            console.print(f"  User: [cyan]{user_info.get('displayName', 'Unknown')}[/cyan]")
-            console.print(f"  Email: [cyan]{user_info.get('emailAddress', 'Unknown')}[/cyan]")
-            console.print(f"  Token saved to: [blue]{token_path}[/blue]")
-        else:
-            console.print("[green]Authentication successful![/green]")
-            console.print(f"  Token saved to: [blue]{token_path}[/blue]")
-
-    except Exception as e:
-        console.print(f"[red]Authentication failed: {e}[/red]")
-        raise typer.Exit(1) from e
-
-
-@app.command()
-def whoami(
-    credentials: Annotated[
-        Path,
-        typer.Option("--credentials", "-c", help="Path to Google OAuth credentials file"),
-    ] = Path(".client_secret.googleusercontent.com.json"),
-    token_path: Annotated[
-        Path,
-        typer.Option("--token", "-t", help="Path to OAuth token"),
-    ] = Path("tmp/token_drive.json"),
-) -> None:
-    """Show the currently authenticated Google user.
-
-    Examples:
-        gwt whoami
-    """
-    config = GoogleDriveExporterConfig(
-        credentials_path=credentials,
-        token_path=token_path,
-    )
-
-    try:
-        exporter = GoogleDriveExporter(config)
-        user_info = exporter.get_authenticated_user_info()
-
-        if user_info:
-            console.print("[bold]Authenticated User[/bold]")
-            console.print(f"  Name:  [cyan]{user_info.get('displayName', 'Unknown')}[/cyan]")
-            console.print(f"  Email: [cyan]{user_info.get('emailAddress', 'Unknown')}[/cyan]")
-            if user_info.get("photoLink"):
-                console.print(f"  Photo: [dim]{user_info.get('photoLink')}[/dim]")
-        else:
-            console.print("[yellow]No user information available[/yellow]")
-            console.print("[dim]Run 'gwt auth' to authenticate[/dim]")
-
-    except FileNotFoundError as e:
-        console.print("[yellow]Not authenticated[/yellow]")
-        console.print("[dim]Run 'gwt auth' to set up authentication[/dim]")
-        raise typer.Exit(1) from e
-    except Exception as e:
-        console.print(f"[red]Error: {e}[/red]")
-        raise typer.Exit(1) from e
-
-
-@app.command()
 def formats(
     doc_type: Annotated[
         str,
@@ -616,9 +512,9 @@ def mail(
     mode: Annotated[str, typer.Option("--mode", "-m", help="Export mode (thread, individual)")] = "thread",
     output: Annotated[Path, typer.Option("--output", "-o", help="Output directory")] = Path("exports/emails"),
     depth: Annotated[int, typer.Option("--depth", "-d", help="Link following depth")] = 0,
-    credentials: Annotated[
-        Path, typer.Option("--credentials", "-c", help="Path to credentials file")
-    ] = Path(".client_secret.googleusercontent.com.json"),
+    credentials: Annotated[Path, typer.Option("--credentials", "-c", help="Path to credentials file")] = Path(
+        ".client_secret.googleusercontent.com.json"
+    ),
     token: Annotated[Path, typer.Option("--token", "-t", help="Path to token file")] = Path("tmp/token_drive.json"),
 ) -> None:
     """Export Gmail messages to JSON or Markdown.
@@ -760,9 +656,9 @@ def calendar(
     export_format: Annotated[str, typer.Option("--format", "-f", help="Export format (json, md)")] = "md",
     output: Annotated[Path, typer.Option("--output", "-o", help="Output directory")] = Path("exports/calendar"),
     depth: Annotated[int, typer.Option("--depth", "-d", help="Link following depth")] = 0,
-    credentials: Annotated[
-        Path, typer.Option("--credentials", "-c", help="Path to credentials file")
-    ] = Path(".client_secret.googleusercontent.com.json"),
+    credentials: Annotated[Path, typer.Option("--credentials", "-c", help="Path to credentials file")] = Path(
+        ".client_secret.googleusercontent.com.json"
+    ),
     token: Annotated[Path, typer.Option("--token", "-t", help="Path to token file")] = Path("tmp/token_drive.json"),
 ) -> None:
     """Export Google Calendar events to JSON or Markdown.
@@ -818,9 +714,9 @@ def calendar(
                         date_obj = datetime.fromisoformat(start_time)
                     date_dir = date_obj.strftime("%Y-%m")
                 except Exception:
-                    date_dir = datetime.now(timezone.utc).strftime("%Y-%m")
+                    date_dir = datetime.now(UTC).strftime("%Y-%m")
             else:
-                date_dir = datetime.now(timezone.utc).strftime("%Y-%m")
+                date_dir = datetime.now(UTC).strftime("%Y-%m")
 
             safe_calendar_id = calendar_id.replace("@", "_at_").replace(".", "_")
             event_dir = output / safe_calendar_id / date_dir
@@ -911,8 +807,8 @@ def calendar(
                     event_id=event_id,
                     calendar_id=calendar_id,
                     summary="Exported Event",  # Would need API call to get actual summary
-                    start_time=datetime.now(timezone.utc).isoformat(),
-                    end_time=datetime.now(timezone.utc).isoformat(),
+                    start_time=datetime.now(UTC).isoformat(),
+                    end_time=datetime.now(UTC).isoformat(),
                     location=None,
                     attendees_count=0,
                     export_path=str(file_path.absolute()),
@@ -1023,6 +919,283 @@ def dump_schema(
     else:
         output = json.dumps(schema, indent=2)
         console.print(output)
+
+
+@app.command()
+def credentials(
+    action: Annotated[
+        str,
+        typer.Argument(help="Action: login, logout, status, import, list, migrate"),
+    ],
+    account: Annotated[
+        str | None,
+        typer.Option("--account", "-a", help="Account email (for logout)"),
+    ] = None,
+    use_keyring: Annotated[
+        bool,
+        typer.Option("--keyring/--no-keyring", help="Use keyring storage"),
+    ] = True,
+    token_path: Annotated[
+        Path,
+        typer.Option("--token", "-t", help="Path to token file (for file storage)"),
+    ] = Path("tmp/token_drive.json"),
+    credentials_file: Annotated[
+        Path,
+        typer.Option("--credentials", "-c", help="Path to client credentials file"),
+    ] = Path(".client_secret.googleusercontent.com.json"),
+) -> None:
+    """Manage Google OAuth credentials.
+
+    Actions:
+        login   - Authenticate with Google (opens browser)
+        logout  - Remove stored credentials
+        status  - Show current authentication status
+        import  - Import client credentials file into keyring
+        list    - List all stored accounts
+        migrate - Migrate file tokens to keyring
+
+    Examples:
+        gwt credentials login
+        gwt credentials status
+        gwt credentials import -c .client_secret.googleusercontent.com.json
+        gwt credentials logout -a user@example.com
+    """
+    from ..core.storage import (
+        FileCredentialStorage,
+        KeyringCredentialStorage,
+        get_credential_storage,
+    )
+
+    if action == "login":
+        # Authenticate with Google
+        config = GoogleDriveExporterConfig(
+            credentials_path=credentials_file,
+            token_path=token_path,
+            use_keyring=use_keyring,
+        )
+
+        storage_type = "keyring" if use_keyring else "file"
+        console.print("[bold]Starting Google OAuth authentication...[/bold]")
+        console.print(f"[dim]Storage: {storage_type}[/dim]")
+        console.print("[dim]A browser window will open for authentication[/dim]\n")
+
+        try:
+            exporter = GoogleDriveExporter(config)
+            # Trigger authentication by accessing the service
+            _ = exporter.service
+
+            # Get user info to confirm
+            user_info = exporter.get_authenticated_user_info()
+            if user_info:
+                console.print("[green]Authentication successful![/green]")
+                console.print(f"  User: [cyan]{user_info.get('displayName', 'Unknown')}[/cyan]")
+                console.print(f"  Email: [cyan]{user_info.get('emailAddress', 'Unknown')}[/cyan]")
+                if use_keyring:
+                    console.print("  Storage: [blue]keyring[/blue]")
+                else:
+                    console.print(f"  Storage: [blue]file ({token_path})[/blue]")
+            else:
+                console.print("[green]Authentication successful![/green]")
+
+        except FileNotFoundError as e:
+            console.print(f"[red]Error: {e}[/red]")
+            console.print("\n[dim]To authenticate, either:[/dim]")
+            console.print(f"  1. Place credentials file at: [cyan]{credentials_file}[/cyan]")
+            console.print("  2. Import to keyring: [cyan]gwt credentials import -c <file>[/cyan]")
+            raise typer.Exit(1) from e
+        except Exception as e:
+            console.print(f"[red]Authentication failed: {e}[/red]")
+            raise typer.Exit(1) from e
+
+    elif action == "logout":
+        storage = get_credential_storage(
+            use_keyring=use_keyring,
+            fallback_to_file=True,
+            token_path=token_path,
+        )
+
+        if storage.delete(account):
+            console.print(f"[green]Logged out {account or 'default account'}[/green]")
+        else:
+            console.print(f"[yellow]No credentials found for {account or 'default'}[/yellow]")
+
+    elif action == "list":
+        # List credentials from both storage backends
+        table = Table(title="Stored Accounts")
+        table.add_column("Account", style="cyan")
+        table.add_column("Storage", style="green")
+
+        found_any = False
+
+        # Check file storage
+        file_storage = FileCredentialStorage(token_path)
+        if file_storage.is_available():
+            file_accounts = file_storage.list_accounts()
+            for acc in file_accounts:
+                table.add_row(acc, "file")
+                found_any = True
+
+        # Check keyring storage if requested
+        if use_keyring:
+            try:
+                keyring_storage = KeyringCredentialStorage()
+                if keyring_storage.is_available():
+                    keyring_accounts = keyring_storage.list_accounts()
+                    for acc in keyring_accounts:
+                        table.add_row(acc, "keyring")
+                        found_any = True
+            except ImportError:
+                console.print("[dim]Keyring not installed (pip install keyring)[/dim]")
+            except Exception as e:
+                console.print(f"[dim]Keyring unavailable: {e}[/dim]")
+
+        if found_any:
+            console.print(table)
+        else:
+            console.print("[yellow]No stored accounts[/yellow]")
+
+    elif action == "migrate":
+        # Migrate from file to keyring
+        file_storage = FileCredentialStorage(token_path)
+        stored = file_storage.load()
+
+        if not stored:
+            console.print("[yellow]No file-based credentials to migrate[/yellow]")
+            raise typer.Exit(0)
+
+        try:
+            keyring_storage = KeyringCredentialStorage()
+            if not keyring_storage.is_available():
+                console.print("[red]Keyring is not available on this system[/red]")
+                raise typer.Exit(1)
+
+            if keyring_storage.save(stored):
+                console.print("[green]Successfully migrated credentials to keyring[/green]")
+
+                # Ask to remove file
+                if typer.confirm("Remove file-based token?"):
+                    file_storage.delete()
+                    console.print("[dim]Removed old token file[/dim]")
+            else:
+                console.print("[red]Failed to save to keyring[/red]")
+                raise typer.Exit(1)
+
+        except ImportError as e:
+            console.print("[red]Keyring not installed. Install with: pip install keyring[/red]")
+            raise typer.Exit(1) from e
+        except Exception as e:
+            console.print(f"[red]Migration failed: {e}[/red]")
+            raise typer.Exit(1) from e
+
+    elif action == "import":
+        # Import client credentials file into keyring
+        if not credentials_file.exists():
+            console.print(f"[red]Client credentials file not found: {credentials_file}[/red]")
+            raise typer.Exit(1)
+
+        try:
+            # Read credentials file
+            with open(credentials_file) as f:
+                client_creds = json.load(f)
+
+            # Validate it looks like a credentials file
+            if "web" not in client_creds and "installed" not in client_creds:
+                console.print("[red]Invalid credentials file format (missing 'web' or 'installed' key)[/red]")
+                raise typer.Exit(1)
+
+            keyring_storage = KeyringCredentialStorage()
+            if not keyring_storage.is_available():
+                console.print("[red]Keyring is not available on this system[/red]")
+                raise typer.Exit(1)
+
+            if keyring_storage.save_client_credentials(client_creds):
+                cred_type = "web" if "web" in client_creds else "installed"
+                console.print(f"[green]Successfully imported {cred_type} credentials to keyring[/green]")
+                console.print("[dim]You can now delete the .client_secret file if desired[/dim]")
+            else:
+                console.print("[red]Failed to save client credentials to keyring[/red]")
+                raise typer.Exit(1)
+
+        except json.JSONDecodeError as e:
+            console.print(f"[red]Invalid JSON in credentials file: {e}[/red]")
+            raise typer.Exit(1) from e
+        except ImportError as e:
+            console.print("[red]Keyring not installed. Install with: pip install keyring[/red]")
+            raise typer.Exit(1) from e
+        except Exception as e:
+            console.print(f"[red]Import failed: {e}[/red]")
+            raise typer.Exit(1) from e
+
+    elif action == "status":
+        # Show authentication status
+        console.print("[bold]Credential Status[/bold]\n")
+
+        # Try to get current user info
+        try:
+            config = GoogleDriveExporterConfig(
+                credentials_path=credentials_file,
+                token_path=token_path,
+                use_keyring=use_keyring,
+            )
+            exporter = GoogleDriveExporter(config)
+            user_info = exporter.get_authenticated_user_info()
+
+            if user_info:
+                console.print("  Logged in: [green]Yes[/green]")
+                console.print(f"  User: [cyan]{user_info.get('displayName', 'Unknown')}[/cyan]")
+                console.print(f"  Email: [cyan]{user_info.get('emailAddress', 'Unknown')}[/cyan]")
+            else:
+                console.print("  Logged in: [yellow]Unknown[/yellow]")
+        except Exception:
+            console.print("  Logged in: [red]No[/red]")
+
+        console.print()
+
+        # Show keyring status if available
+        if use_keyring:
+            try:
+                keyring_storage = KeyringCredentialStorage()
+                if keyring_storage.is_available():
+                    console.print("  Keyring: [green]available[/green]")
+
+                    # Check client credentials
+                    if keyring_storage.has_client_credentials():
+                        client_creds = keyring_storage.load_client_credentials()
+                        if client_creds:
+                            cred_type = "web" if "web" in client_creds else "installed"
+                            console.print(f"  Client Credentials: [green]stored[/green] ({cred_type})")
+                    else:
+                        console.print("  Client Credentials: [yellow]not in keyring[/yellow]")
+
+                    # Check OAuth tokens
+                    accounts = keyring_storage.list_accounts()
+                    if accounts:
+                        console.print(f"  OAuth Tokens: [green]{len(accounts)} account(s)[/green]")
+                    else:
+                        console.print("  OAuth Tokens: [yellow]none in keyring[/yellow]")
+                else:
+                    console.print("  Keyring: [yellow]not available[/yellow]")
+            except ImportError:
+                console.print("  Keyring: [dim]not installed[/dim]")
+            except Exception as e:
+                console.print(f"  Keyring: [red]error ({e})[/red]")
+
+        # Check file storage
+        file_storage = FileCredentialStorage(token_path)
+        if token_path.exists():
+            console.print(f"  Token File: [green]exists[/green] ({token_path})")
+        else:
+            console.print("  Token File: [dim]not found[/dim]")
+
+        if credentials_file.exists():
+            console.print(f"  Credentials File: [green]exists[/green] ({credentials_file})")
+        else:
+            console.print("  Credentials File: [dim]not found[/dim]")
+
+    else:
+        console.print(f"[red]Unknown action: {action}[/red]")
+        console.print("[dim]Valid actions: login, logout, status, import, list, migrate[/dim]")
+        raise typer.Exit(1)
 
 
 @app.command()
