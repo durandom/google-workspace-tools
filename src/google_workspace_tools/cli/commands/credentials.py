@@ -52,11 +52,6 @@ def credentials(
         gwt credentials import -c .client_secret.googleusercontent.com.json
         gwt credentials logout -a user@example.com
     """
-    from ...core.storage import (
-        FileCredentialStorage,
-        KeyringCredentialStorage,
-        get_credential_storage,
-    )
 
     if action == "login":
         _handle_login(credentials_file, token_path, use_keyring)
@@ -313,7 +308,6 @@ def _handle_status(credentials_file: Path, token_path: Path, use_keyring: bool) 
             console.print(f"  Keyring: [red]error ({e})[/red]")
 
     # Check file storage
-    file_storage = FileCredentialStorage(token_path)
     if token_path.exists():
         console.print(f"  Token File: [green]exists[/green] ({token_path})")
     else:

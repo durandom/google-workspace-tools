@@ -98,9 +98,7 @@ def calendar(
 
         # If event_id is provided, fetch single event
         if event_id:
-            _export_single_event(
-                exporter, formatter, event_id, calendar_id, export_format, output, depth
-            )
+            _export_single_event(exporter, formatter, event_id, calendar_id, export_format, output, depth)
             return
 
         # If no filters provided, list calendars
