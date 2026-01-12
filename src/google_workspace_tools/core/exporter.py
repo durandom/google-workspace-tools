@@ -2364,6 +2364,198 @@ class GoogleDriveExporter:
             logger.error(f"Failed to export calendar event to Markdown: {e}")
             return False
 
+    def _format_calendar_event_as_json(self, event: dict[str, Any]) -> str:
+        """Format calendar event as JSON string.
+
+        Args:
+            event: Calendar event object from API
+
+        Returns:
+            JSON string representation of the event
+        """
+        # Extract Drive links from description
+        description = event.get("description", "")
+        drive_links = self._extract_links_from_text(description)
+
+        # Add Drive links from attachments
+        attachments = event.get("attachments", [])
+        for att in attachments:
+            file_url = att.get("fileUrl", "")
+            if "drive.google.com" in file_url:
+                links = self._extract_links_from_text(file_url)
+                drive_links.extend(links)
+
+        # Add metadata
+        export_data = {**event, "drive_links": list(set(drive_links)), "exported_at": datetime.now(UTC).isoformat()}
+
+        return json.dumps(export_data, indent=2, ensure_ascii=False, default=str)
+
+    def _format_calendar_event_as_markdown(self, event: dict[str, Any]) -> str:
+        """Format calendar event as Markdown string with frontmatter.
+
+        Args:
+            event: Calendar event object from API
+
+        Returns:
+            Markdown string representation of the event
+        """
+        summary = event.get("summary", "(No title)")
+        description = event.get("description", "")
+        location = event.get("location", "")
+
+        # Extract start/end times
+        start = event.get("start", {})
+        end = event.get("end", {})
+        start_time = start.get("dateTime", start.get("date", ""))
+        end_time = end.get("dateTime", end.get("date", ""))
+
+        # Get organizer and attendees
+        organizer = event.get("organizer", {})
+        attendees = event.get("attendees", [])
+
+        # Generate frontmatter
+        frontmatter_data = {
+            "event_id": event.get("id", ""),
+            "calendar_id": event.get("_calendar_id", ""),
+            "summary": summary,
+            "start": start_time,
+            "end": end_time,
+            "location": location or None,
+            "attendees_count": len(attendees),
+            "exported_at": datetime.now(UTC).isoformat(),
+        }
+
+        if self.config.frontmatter_fields:
+            frontmatter_data.update(self.config.frontmatter_fields)
+
+        # Remove None values
+        frontmatter_data = {k: v for k, v in frontmatter_data.items() if v is not None}
+
+        yaml_content = yaml.dump(frontmatter_data, default_flow_style=False, allow_unicode=True, sort_keys=False)
+        md_content = f"---\n{yaml_content}---\n\n"
+
+        # Add event title
+        md_content += f"# {summary}\n\n"
+
+        # Add when/where
+        md_content += f"**When:** {start_time} - {end_time}\n\n"
+        if location:
+            md_content += f"**Where:** {location}\n\n"
+
+        # Add organizer
+        if organizer:
+            organizer_name = organizer.get("displayName", organizer.get("email", ""))
+            md_content += f"**Organizer:** {organizer_name}\n\n"
+
+        # Add attendees
+        if attendees:
+            md_content += "**Attendees:**\n\n"
+            for attendee in attendees:
+                email = attendee.get("email", "")
+                name = attendee.get("displayName", email)
+                response = attendee.get("responseStatus", "needsAction")
+                optional = " (optional)" if attendee.get("optional") else ""
+                organizer_flag = " (organizer)" if attendee.get("organizer") else ""
+                md_content += f"- {name} ({response}){optional}{organizer_flag}\n"
+            md_content += "\n"
+
+        # Add description
+        if description:
+            md_content += "## Description\n\n"
+            # Try to convert HTML to Markdown
+            if "<" in description and ">" in description:
+                try:
+                    desc_md = convert_to_markdown(description)
+                    md_content += desc_md + "\n\n"
+                except Exception as e:
+                    logger.warning(f"Failed to convert description HTML to Markdown: {e}")
+                    md_content += description + "\n\n"
+            else:
+                md_content += description + "\n\n"
+
+        # Add attachments
+        attachments = event.get("attachments", [])
+        if attachments:
+            md_content += "**Attachments:**\n\n"
+            for att in attachments:
+                title = att.get("title", "Untitled")
+                file_url = att.get("fileUrl", "")
+                md_content += f"- [{title}]({file_url})\n"
+            md_content += "\n"
+
+        return md_content
+
+    def format_calendar_events_as_string(
+        self,
+        filters: CalendarEventFilter | None = None,
+        export_format: str = "md",
+    ) -> str:
+        """Format calendar events as a single concatenated string for stdout output.
+
+        Args:
+            filters: Event filters (default: next 30 days from primary calendar)
+            export_format: Export format ('json' or 'md')
+
+        Returns:
+            Concatenated string of all formatted calendar events
+        """
+        if filters is None:
+            # Default: primary calendar, next 30 days
+            filters = CalendarEventFilter(
+                time_min=datetime.now(UTC),
+                time_max=datetime.now(UTC).replace(day=datetime.now(UTC).day + 30)
+                if datetime.now(UTC).day <= 28
+                else datetime.now(UTC).replace(month=datetime.now(UTC).month + 1, day=1),
+            )
+
+        if export_format not in self.CALENDAR_EXPORT_FORMATS:
+            raise ValueError(f"Invalid export format: {export_format}. Must be 'json' or 'md'")
+
+        logger.info(f"Formatting Calendar events (format: {export_format})")
+
+        # Fetch events
+        events = list(self._fetch_events_paginated(filters))
+        if not events:
+            logger.info("No events found matching filters")
+            return ""
+
+        logger.info(f"Found {len(events)} events")
+
+        output_parts: list[str] = []
+
+        for event in events:
+            if export_format == "json":
+                output_parts.append(self._format_calendar_event_as_json(event))
+            else:  # md
+                output_parts.append(self._format_calendar_event_as_markdown(event))
+
+        # Join with separator based on format
+        if export_format == "json":
+            # JSON array of events
+            return "[\n" + ",\n".join(output_parts) + "\n]"
+        else:
+            # Markdown with clear separation
+            return "\n---\n\n".join(output_parts)
+
+    def format_calendar_event_as_string(
+        self,
+        event: dict[str, Any],
+        export_format: str = "md",
+    ) -> str:
+        """Format a single calendar event as string for stdout output.
+
+        Args:
+            event: Calendar event object from API
+            export_format: Export format ('json' or 'md')
+
+        Returns:
+            Formatted string representation of the event
+        """
+        if export_format == "json":
+            return self._format_calendar_event_as_json(event)
+        else:
+            return self._format_calendar_event_as_markdown(event)
+
     def export_calendar_events(
         self,
         filters: CalendarEventFilter | None = None,

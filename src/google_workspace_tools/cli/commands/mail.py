@@ -24,8 +24,7 @@ def mail(
     max_results: Annotated[int, typer.Option("--max", "-n", help="Maximum messages to fetch")] = 100,
     export_format: Annotated[str, typer.Option("--format", "-f", help="Export format (json, md)")] = "md",
     mode: Annotated[str, typer.Option("--mode", "-m", help="Export mode (thread, individual)")] = "thread",
-    output: Annotated[Path, typer.Option("--output", "-o", help="Output directory")] = Path("exports/emails"),
-    stdout: Annotated[bool, typer.Option("--stdout", help="Output to stdout instead of files")] = False,
+    output: Annotated[Path | None, typer.Option("--output", "-o", help="Output directory (default: stdout)")] = None,
     depth: Annotated[int, typer.Option("--depth", "-d", help="Link following depth")] = 0,
     credentials: Annotated[Path, typer.Option("--credentials", "-c", help="Path to credentials file")] = Path(
         ".client_secret.googleusercontent.com.json"
@@ -34,12 +33,14 @@ def mail(
 ) -> None:
     """Export Gmail messages to JSON or Markdown.
 
+    Output goes to stdout by default. Use -o to save to files.
+
     Examples:
-        gwt mail -q "from:boss@example.com" -f md
+        gwt mail -q "from:boss@example.com"
 
-        gwt mail -q "subject:weekly" --stdout
+        gwt mail -q "subject:weekly" | jq .
 
-        gwt mail -a 2024-01-01 -l work,important
+        gwt mail -a 2024-01-01 -o exports/emails
 
         gwt mail -q "has:attachment" -d 2
     """
@@ -63,19 +64,19 @@ def mail(
             max_results=max_results,
         )
 
-        # Create config
+        # Create config (use placeholder dir for stdout mode)
         config = GoogleDriveExporterConfig(
             credentials_path=credentials,
             token_path=token,
-            target_directory=output.parent,
+            target_directory=output.parent if output else Path("."),
             follow_links=(depth > 0),
             link_depth=depth,
         )
 
         exporter = GoogleDriveExporter(config)
 
-        # Handle stdout mode - output directly and exit
-        if stdout:
+        # Default: output to stdout
+        if output is None:
             import sys
 
             content = exporter.format_emails_as_string(
@@ -88,7 +89,7 @@ def mail(
                 sys.stdout.write("\n")
             return
 
-        # Progress messages
+        # File output mode - show progress
         formatter.print_progress("[bold]Exporting Gmail messages...[/bold]")
         formatter.print_progress(f"Query: {filters.build_query() or '(all messages)'}")
         formatter.print_progress(f"Format: {export_format}, Mode: {mode}")

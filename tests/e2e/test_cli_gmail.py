@@ -327,26 +327,27 @@ class TestMailIntegration:
 
 @pytest.mark.e2e
 class TestMailStdout:
-    """Tests for mail command stdout output mode."""
+    """Tests for mail command stdout output mode (default behavior)."""
 
-    def test_mail_help_shows_stdout_option(self):
-        """Test that --stdout option appears in help."""
+    def test_mail_help_shows_stdout_default(self):
+        """Test that help indicates stdout is default."""
         result = runner.invoke(app, ["mail", "--help"])
         assert result.exit_code == 0
-        assert "--stdout" in result.stdout
+        assert "stdout" in result.stdout.lower()
+        assert "--output" in result.stdout
 
     @patch("google_workspace_tools.cli.commands.mail.GoogleDriveExporter")
     def test_mail_stdout_outputs_to_terminal(self, mock_exporter_class, tmp_path):
-        """Test that --stdout mode outputs content to terminal instead of files."""
+        """Test that default mode outputs content to terminal instead of files."""
         mock_exporter = MagicMock()
         mock_exporter.format_emails_as_string.return_value = "# Email Thread: Test\n\nHello World"
         mock_exporter_class.return_value = mock_exporter
 
+        # No --output flag means stdout
         result = runner.invoke(
             app,
             [
                 "mail",
-                "--stdout",
                 "-c",
                 str(tmp_path / "creds.json"),
             ],
@@ -363,16 +364,16 @@ class TestMailStdout:
 
     @patch("google_workspace_tools.cli.commands.mail.GoogleDriveExporter")
     def test_mail_stdout_with_json_format(self, mock_exporter_class, tmp_path):
-        """Test --stdout with JSON format."""
+        """Test stdout mode with JSON format."""
         mock_exporter = MagicMock()
         mock_exporter.format_emails_as_string.return_value = '[{"thread_id": "123"}]'
         mock_exporter_class.return_value = mock_exporter
 
+        # No --output flag means stdout
         result = runner.invoke(
             app,
             [
                 "mail",
-                "--stdout",
                 "-f",
                 "json",
                 "-c",

@@ -43,7 +43,7 @@ DEFAULT_OUTPUT = Path("exports/calendar")
 def _create_exporter(
     credentials: Path,
     token: Path,
-    output: Path,
+    output: Path | None = None,
     depth: int = 0,
 ) -> GoogleDriveExporter:
     """Create a configured GoogleDriveExporter instance.
@@ -51,7 +51,7 @@ def _create_exporter(
     Args:
         credentials: Path to credentials file
         token: Path to token file
-        output: Output directory (used for target_directory)
+        output: Output directory (used for target_directory), None for stdout mode
         depth: Link following depth
 
     Returns:
@@ -60,7 +60,7 @@ def _create_exporter(
     config = GoogleDriveExporterConfig(
         credentials_path=credentials,
         token_path=token,
-        target_directory=output.parent,
+        target_directory=output.parent if output else Path("."),
         follow_links=(depth > 0),
         link_depth=depth,
     )
@@ -134,8 +134,8 @@ def calendar_get(
         str, typer.Option("--format", "-f", help="Export format (json, md)")
     ] = "md",
     output: Annotated[
-        Path, typer.Option("--output", "-o", help="Output directory")
-    ] = DEFAULT_OUTPUT,
+        Path | None, typer.Option("--output", "-o", help="Output directory (default: stdout)")
+    ] = None,
     depth: Annotated[
         int, typer.Option("--depth", "-d", help="Link following depth")
     ] = 0,
@@ -148,24 +148,36 @@ def calendar_get(
 ) -> None:
     """Fetch and export a single calendar event by ID.
 
-    Retrieves a specific event and exports it to the specified format.
+    Output goes to stdout by default. Use -o to save to file.
 
     Examples:
         gwt calendar get -e abc123def456
         gwt calendar get -e EVENT_ID --calendar work@group.calendar.google.com
-        gwt calendar get -e EVENT_ID -f json -d 2
+        gwt calendar get -e EVENT_ID -f json -o exports/
     """
     formatter = get_formatter(get_output_mode())
 
     with cli_error_handler(formatter):
         exporter = _create_exporter(credentials, token, output, depth)
 
-        formatter.print_progress(f"[bold]Fetching event {event_id}...[/bold]")
         event = exporter.get_calendar_event(event_id, calendar_id)
 
         if not event:
             formatter.print_error(f"Event {event_id} not found")
             raise typer.Exit(1)
+
+        # Default: output to stdout
+        if output is None:
+            import sys
+
+            content = exporter.format_calendar_event_as_string(event, export_format)
+            sys.stdout.write(content)
+            if content and not content.endswith("\n"):
+                sys.stdout.write("\n")
+            return
+
+        # File output mode - show progress
+        formatter.print_progress(f"[bold]Fetching event {event_id}...[/bold]")
 
         # Export the single event
         summary = event.get("summary", "no-title")
@@ -253,8 +265,8 @@ def calendar_export(
         str, typer.Option("--format", "-f", help="Export format (json, md)")
     ] = "md",
     output: Annotated[
-        Path, typer.Option("--output", "-o", help="Output directory")
-    ] = DEFAULT_OUTPUT,
+        Path | None, typer.Option("--output", "-o", help="Output directory (default: stdout)")
+    ] = None,
     depth: Annotated[
         int, typer.Option("--depth", "-d", help="Link following depth")
     ] = 0,
@@ -267,13 +279,12 @@ def calendar_export(
 ) -> None:
     """Export Google Calendar events with optional filters.
 
-    Batch exports events from a calendar, optionally filtered by date range
-    and search query.
+    Output goes to stdout by default. Use -o to save to files.
 
     Examples:
         gwt calendar export -a 2024-01-01 -b 2024-12-31
-        gwt calendar export --calendar work -q "sprint"
-        gwt calendar export -d 2  # Follow links in event descriptions
+        gwt calendar export --calendar work -q "sprint" | jq .
+        gwt calendar export -a 2024-01-01 -o exports/calendar
     """
     formatter = get_formatter(get_output_mode())
 
@@ -293,7 +304,20 @@ def calendar_export(
             max_results=max_results,
         )
 
-        # Progress messages
+        # Default: output to stdout
+        if output is None:
+            import sys
+
+            content = exporter.format_calendar_events_as_string(
+                filters=filters,
+                export_format=export_format,
+            )
+            sys.stdout.write(content)
+            if content and not content.endswith("\n"):
+                sys.stdout.write("\n")
+            return
+
+        # File output mode - show progress
         formatter.print_progress("[bold]Exporting Calendar events...[/bold]")
         formatter.print_progress(f"Calendar: {calendar_id}")
         if after:
