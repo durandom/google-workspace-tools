@@ -1,11 +1,16 @@
-"""Calendar export command for Google Workspace Tools."""
+"""Calendar export command for Google Workspace Tools.
+
+Provides subcommands for interacting with Google Calendar:
+- list: List accessible calendars
+- get: Fetch a single event by ID
+- export: Batch export events with filters
+"""
 
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated
 
 import typer
-from loguru import logger
 
 from ... import __version__
 from ...core.config import GoogleDriveExporterConfig
@@ -19,106 +24,261 @@ from ..schemas import (
     CalendarListOutput,
     CalendarOutput,
 )
-from ..utils import print_next_steps
+from ..utils import cli_error_handler, print_next_steps
+
+# Create subcommand app
+calendar_app = typer.Typer(
+    name="calendar",
+    help="Google Calendar operations - list calendars, fetch events, export",
+    rich_markup_mode="rich",
+)
 
 
-def _list_calendars(exporter: GoogleDriveExporter, formatter: Any) -> CalendarListOutput:
-    """List accessible calendars and return schema.
+# Common options as defaults
+DEFAULT_CREDENTIALS = Path(".client_secret.googleusercontent.com.json")
+DEFAULT_TOKEN = Path("tmp/token_drive.json")
+DEFAULT_OUTPUT = Path("exports/calendar")
+
+
+def _create_exporter(
+    credentials: Path,
+    token: Path,
+    output: Path,
+    depth: int = 0,
+) -> GoogleDriveExporter:
+    """Create a configured GoogleDriveExporter instance.
 
     Args:
-        exporter: GoogleDriveExporter instance
-        formatter: Output formatter
+        credentials: Path to credentials file
+        token: Path to token file
+        output: Output directory (used for target_directory)
+        depth: Link following depth
 
     Returns:
-        CalendarListOutput schema
+        Configured GoogleDriveExporter
     """
-    calendars = exporter.list_calendars()
-
-    # Build schema
-    calendar_infos = [
-        CalendarInfo(
-            id=cal.get("id", ""),
-            summary=cal.get("summary", "(No name)"),
-            primary=cal.get("primary", False),
-        )
-        for cal in calendars
-    ]
-
-    return CalendarListOutput(
-        command="calendar",
-        success=True,
-        version=__version__,
-        calendars=calendar_infos,
-        total_count=len(calendars),
+    config = GoogleDriveExporterConfig(
+        credentials_path=credentials,
+        token_path=token,
+        target_directory=output.parent,
+        follow_links=(depth > 0),
+        link_depth=depth,
     )
+    return GoogleDriveExporter(config)
 
 
-def calendar(
-    calendar_id: Annotated[str, typer.Option("--calendar", help="Calendar ID")] = "primary",
-    event_id: Annotated[str | None, typer.Option("--event-id", "-e", help="Specific event ID to fetch")] = None,
-    after: Annotated[str | None, typer.Option("--after", "-a", help="After date (YYYY-MM-DD)")] = None,
-    before: Annotated[str | None, typer.Option("--before", "-b", help="Before date (YYYY-MM-DD)")] = None,
-    query: Annotated[str, typer.Option("--query", "-q", help="Search query")] = "",
-    max_results: Annotated[int, typer.Option("--max", "-n", help="Maximum events to fetch")] = 250,
-    export_format: Annotated[str, typer.Option("--format", "-f", help="Export format (json, md)")] = "md",
-    output: Annotated[Path, typer.Option("--output", "-o", help="Output directory")] = Path("exports/calendar"),
-    depth: Annotated[int, typer.Option("--depth", "-d", help="Link following depth")] = 0,
-    credentials: Annotated[Path, typer.Option("--credentials", "-c", help="Path to credentials file")] = Path(
-        ".client_secret.googleusercontent.com.json"
-    ),
-    token: Annotated[Path, typer.Option("--token", "-t", help="Path to token file")] = Path("tmp/token_drive.json"),
+@calendar_app.command(name="list")
+def calendar_list(
+    credentials: Annotated[
+        Path, typer.Option("--credentials", "-c", help="Path to credentials file")
+    ] = DEFAULT_CREDENTIALS,
+    token: Annotated[
+        Path, typer.Option("--token", "-t", help="Path to token file")
+    ] = DEFAULT_TOKEN,
 ) -> None:
-    """Export Google Calendar events to JSON or Markdown.
+    """List all accessible Google Calendars.
 
-    If no filters are provided, lists all accessible calendars.
+    Shows calendar IDs which can be used with other calendar commands.
 
     Examples:
-        gwt calendar                              # List calendars
-
-        gwt calendar -e EVENT_ID                  # Fetch single event by ID
-
-        gwt calendar -a 2024-01-01 -b 2024-12-31  # Export events
-
-        gwt calendar --calendar work -q "sprint"
-
-        gwt calendar -d 2                         # Follow links in events
+        gwt calendar list
+        gwt calendar list --credentials my_creds.json
     """
-    # Get formatter for output mode
     formatter = get_formatter(get_output_mode())
 
-    try:
-        config = GoogleDriveExporterConfig(
-            credentials_path=credentials,
-            token_path=token,
-            target_directory=output.parent,
-            follow_links=(depth > 0),
-            link_depth=depth,
+    with cli_error_handler(formatter):
+        exporter = _create_exporter(credentials, token, DEFAULT_OUTPUT)
+        calendars = exporter.list_calendars()
+
+        # Build schema
+        calendar_infos = [
+            CalendarInfo(
+                id=cal.get("id", ""),
+                summary=cal.get("summary", "(No name)"),
+                primary=cal.get("primary", False),
+            )
+            for cal in calendars
+        ]
+
+        output_schema = CalendarListOutput(
+            command="calendar list",
+            success=True,
+            version=__version__,
+            calendars=calendar_infos,
+            total_count=len(calendars),
         )
 
-        exporter = GoogleDriveExporter(config)
+        formatter.print_result(output_schema)
 
-        # If event_id is provided, fetch single event
-        if event_id:
-            _export_single_event(exporter, formatter, event_id, calendar_id, export_format, output, depth)
-            return
+        # Print next-step hints (only for human output mode)
+        if get_output_mode() == OutputMode.HUMAN:
+            print_next_steps(
+                formatter,
+                [
+                    ("gwt calendar export -a YYYY-MM-DD -b YYYY-MM-DD", "Export events in date range"),
+                    ("gwt calendar export --calendar <ID>", "Export from specific calendar"),
+                    ("gwt calendar get -e <EVENT_ID>", "Fetch a specific event"),
+                ],
+            )
 
-        # If no filters provided, list calendars
-        has_filters = after or before or query
-        if not has_filters:
-            list_schema = _list_calendars(exporter, formatter)
-            formatter.print_result(list_schema)
 
-            # Print next-step hints (only for human output mode)
-            if get_output_mode() == OutputMode.HUMAN:
-                print_next_steps(
-                    formatter,
-                    [
-                        ("gwt calendar -a YYYY-MM-DD -b YYYY-MM-DD", "Export events in date range"),
-                        ("gwt calendar --calendar <ID>", "Export from specific calendar"),
-                        ("gwt calendar -q 'meeting'", "Search for events"),
-                    ],
-                )
-            return
+@calendar_app.command(name="get")
+def calendar_get(
+    event_id: Annotated[
+        str, typer.Option("--event-id", "-e", help="Event ID to fetch")
+    ],
+    calendar_id: Annotated[
+        str, typer.Option("--calendar", help="Calendar ID")
+    ] = "primary",
+    export_format: Annotated[
+        str, typer.Option("--format", "-f", help="Export format (json, md)")
+    ] = "md",
+    output: Annotated[
+        Path, typer.Option("--output", "-o", help="Output directory")
+    ] = DEFAULT_OUTPUT,
+    depth: Annotated[
+        int, typer.Option("--depth", "-d", help="Link following depth")
+    ] = 0,
+    credentials: Annotated[
+        Path, typer.Option("--credentials", "-c", help="Path to credentials file")
+    ] = DEFAULT_CREDENTIALS,
+    token: Annotated[
+        Path, typer.Option("--token", "-t", help="Path to token file")
+    ] = DEFAULT_TOKEN,
+) -> None:
+    """Fetch and export a single calendar event by ID.
+
+    Retrieves a specific event and exports it to the specified format.
+
+    Examples:
+        gwt calendar get -e abc123def456
+        gwt calendar get -e EVENT_ID --calendar work@group.calendar.google.com
+        gwt calendar get -e EVENT_ID -f json -d 2
+    """
+    formatter = get_formatter(get_output_mode())
+
+    with cli_error_handler(formatter):
+        exporter = _create_exporter(credentials, token, output, depth)
+
+        formatter.print_progress(f"[bold]Fetching event {event_id}...[/bold]")
+        event = exporter.get_calendar_event(event_id, calendar_id)
+
+        if not event:
+            formatter.print_error(f"Event {event_id} not found")
+            raise typer.Exit(1)
+
+        # Export the single event
+        summary = event.get("summary", "no-title")
+        safe_summary = "".join(c if c.isalnum() or c in (" ", "-", "_") else "_" for c in summary)[:50]
+
+        # Get start date for directory organization
+        start = event.get("start", {})
+        start_time = start.get("dateTime", start.get("date", ""))
+        date_dir = _parse_date_dir(start_time)
+
+        safe_calendar_id = calendar_id.replace("@", "_at_").replace(".", "_")
+        event_dir = output / safe_calendar_id / date_dir
+        filename = f"event_{event_id}_{safe_summary}.{export_format}"
+        output_path = event_dir / filename
+
+        # Export based on format
+        if export_format == "json":
+            success = exporter._export_calendar_event_as_json(event, output_path)
+        else:  # md
+            success = exporter._export_calendar_event_as_markdown(event, output_path)
+
+        if not success:
+            formatter.print_error("Failed to export event")
+            raise typer.Exit(1)
+
+        # Build output schema
+        event_export = CalendarEventExport(
+            event_id=event_id,
+            calendar_id=calendar_id,
+            summary=summary,
+            start_time=start_time,
+            end_time=event.get("end", {}).get("dateTime", event.get("end", {}).get("date", "")),
+            location=event.get("location"),
+            attendees_count=len(event.get("attendees", [])),
+            export_path=str(output_path.absolute()),
+            has_attachments=bool(event.get("attachments")),
+            drive_links_found=0,
+        )
+
+        output_schema = CalendarOutput(
+            command="calendar get",
+            success=True,
+            version=__version__,
+            export_format=export_format,
+            filters_applied={"event_id": event_id},
+            calendars_queried=[calendar_id],
+            events=[event_export],
+            total_exported=1,
+            output_directory=str(output.absolute()),
+            link_following_enabled=depth > 0,
+        )
+
+        formatter.print_result(output_schema)
+
+        # Print next-step hints (only for human output mode)
+        if get_output_mode() == OutputMode.HUMAN:
+            print_next_steps(
+                formatter,
+                [
+                    ("gwt calendar export -a YYYY-MM-DD", "Export more events"),
+                    ("gwt mail -q 'from:...'", "Export related Gmail messages"),
+                    ("gwt download <URL>", "Download a linked document"),
+                ],
+            )
+
+
+@calendar_app.command(name="export")
+def calendar_export(
+    calendar_id: Annotated[
+        str, typer.Option("--calendar", help="Calendar ID")
+    ] = "primary",
+    after: Annotated[
+        str | None, typer.Option("--after", "-a", help="After date (YYYY-MM-DD)")
+    ] = None,
+    before: Annotated[
+        str | None, typer.Option("--before", "-b", help="Before date (YYYY-MM-DD)")
+    ] = None,
+    query: Annotated[
+        str, typer.Option("--query", "-q", help="Search query")
+    ] = "",
+    max_results: Annotated[
+        int, typer.Option("--max", "-n", help="Maximum events to fetch")
+    ] = 250,
+    export_format: Annotated[
+        str, typer.Option("--format", "-f", help="Export format (json, md)")
+    ] = "md",
+    output: Annotated[
+        Path, typer.Option("--output", "-o", help="Output directory")
+    ] = DEFAULT_OUTPUT,
+    depth: Annotated[
+        int, typer.Option("--depth", "-d", help="Link following depth")
+    ] = 0,
+    credentials: Annotated[
+        Path, typer.Option("--credentials", "-c", help="Path to credentials file")
+    ] = DEFAULT_CREDENTIALS,
+    token: Annotated[
+        Path, typer.Option("--token", "-t", help="Path to token file")
+    ] = DEFAULT_TOKEN,
+) -> None:
+    """Export Google Calendar events with optional filters.
+
+    Batch exports events from a calendar, optionally filtered by date range
+    and search query.
+
+    Examples:
+        gwt calendar export -a 2024-01-01 -b 2024-12-31
+        gwt calendar export --calendar work -q "sprint"
+        gwt calendar export -d 2  # Follow links in event descriptions
+    """
+    formatter = get_formatter(get_output_mode())
+
+    with cli_error_handler(formatter):
+        exporter = _create_exporter(credentials, token, output, depth)
 
         # Parse dates
         after_date = datetime.fromisoformat(after) if after else None
@@ -148,7 +308,7 @@ def calendar(
             output_directory=output,
         )
 
-        # Build event export list (simplified - we don't have detailed event metadata from export)
+        # Build event export list
         events: list[CalendarEventExport] = []
         for evt_id, file_path in exported.items():
             events.append(
@@ -168,7 +328,7 @@ def calendar(
 
         # Build output schema
         export_schema = CalendarOutput(
-            command="calendar",
+            command="calendar export",
             success=True,
             version=__version__,
             export_format=export_format,
@@ -185,12 +345,10 @@ def calendar(
             link_following_enabled=depth > 0,
         )
 
-        # Print result
         formatter.print_result(export_schema)
 
         # Print next-step hints (only for human output mode)
         if get_output_mode() == OutputMode.HUMAN:
-            # Check if any Drive links were found in exported events
             drive_links_found = sum(e.drive_links_found for e in events)
             hints: list[tuple[str, str]] = []
 
@@ -210,109 +368,24 @@ def calendar(
             )
             print_next_steps(formatter, hints)
 
-    except Exception as e:
-        logger.error(f"Failed: {e}")
-        formatter.print_error(f"Error: {e}")
-        raise typer.Exit(1) from e
 
-
-def _export_single_event(
-    exporter: GoogleDriveExporter,
-    formatter: Any,
-    event_id: str,
-    calendar_id: str,
-    export_format: str,
-    output: Path,
-    depth: int,
-) -> None:
-    """Export a single calendar event by ID.
+def _parse_date_dir(start_time: str) -> str:
+    """Parse start time to get date directory name (YYYY-MM format).
 
     Args:
-        exporter: GoogleDriveExporter instance
-        formatter: Output formatter
-        event_id: Event ID to fetch
-        calendar_id: Calendar ID containing the event
-        export_format: Export format (json or md)
-        output: Output directory
-        depth: Link following depth
+        start_time: ISO format datetime or date string
+
+    Returns:
+        Directory name in YYYY-MM format
     """
-    formatter.print_progress(f"[bold]Fetching event {event_id}...[/bold]")
-    event = exporter.get_calendar_event(event_id, calendar_id)
+    if not start_time:
+        return datetime.now(UTC).strftime("%Y-%m")
 
-    if not event:
-        formatter.print_error(f"Event {event_id} not found")
-        raise typer.Exit(1)
-
-    # Export the single event
-    summary = event.get("summary", "no-title")
-    safe_summary = "".join(c if c.isalnum() or c in (" ", "-", "_") else "_" for c in summary)[:50]
-
-    # Get start date for organization
-    start = event.get("start", {})
-    start_time = start.get("dateTime", start.get("date", ""))
-    if start_time:
-        try:
-            if "T" in start_time:
-                date_obj = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
-            else:
-                date_obj = datetime.fromisoformat(start_time)
-            date_dir = date_obj.strftime("%Y-%m")
-        except Exception:
-            date_dir = datetime.now(UTC).strftime("%Y-%m")
-    else:
-        date_dir = datetime.now(UTC).strftime("%Y-%m")
-
-    safe_calendar_id = calendar_id.replace("@", "_at_").replace(".", "_")
-    event_dir = output / safe_calendar_id / date_dir
-    filename = f"event_{event_id}_{safe_summary}.{export_format}"
-    output_path = event_dir / filename
-
-    # Export based on format
-    if export_format == "json":
-        success = exporter._export_calendar_event_as_json(event, output_path)
-    else:  # md
-        success = exporter._export_calendar_event_as_markdown(event, output_path)
-
-    if success:
-        # Build output schema for single event
-        event_export = CalendarEventExport(
-            event_id=event_id,
-            calendar_id=calendar_id,
-            summary=summary,
-            start_time=start_time,
-            end_time=event.get("end", {}).get("dateTime", event.get("end", {}).get("date", "")),
-            location=event.get("location"),
-            attendees_count=len(event.get("attendees", [])),
-            export_path=str(output_path.absolute()),
-            has_attachments=bool(event.get("attachments")),
-            drive_links_found=0,
-        )
-
-        output_schema = CalendarOutput(
-            command="calendar",
-            success=True,
-            version=__version__,
-            export_format=export_format,
-            filters_applied={"event_id": event_id},
-            calendars_queried=[calendar_id],
-            events=[event_export],
-            total_exported=1,
-            output_directory=str(output.absolute()),
-            link_following_enabled=depth > 0,
-        )
-
-        formatter.print_result(output_schema)
-
-        # Print next-step hints (only for human output mode)
-        if get_output_mode() == OutputMode.HUMAN:
-            print_next_steps(
-                formatter,
-                [
-                    ("gwt calendar -a YYYY-MM-DD", "Export more events"),
-                    ("gwt mail -q 'from:...'", "Export related Gmail messages"),
-                    ("gwt download <URL>", "Download a linked document"),
-                ],
-            )
-    else:
-        formatter.print_error("Failed to export event")
-        raise typer.Exit(1)
+    try:
+        if "T" in start_time:
+            date_obj = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
+        else:
+            date_obj = datetime.fromisoformat(start_time)
+        return date_obj.strftime("%Y-%m")
+    except Exception:
+        return datetime.now(UTC).strftime("%Y-%m")

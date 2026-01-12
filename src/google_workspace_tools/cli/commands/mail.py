@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Annotated, Literal, cast
 
 import typer
-from loguru import logger
 
 from ... import __version__
 from ...core.config import GoogleDriveExporterConfig
@@ -14,7 +13,7 @@ from ...core.filters import GmailSearchFilter
 from ..formatters import get_formatter
 from ..output import OutputMode, get_output_mode
 from ..schemas import EmailThreadExport, MailOutput
-from ..utils import print_next_steps
+from ..utils import cli_error_handler, print_next_steps
 
 
 def mail(
@@ -47,7 +46,7 @@ def mail(
     # Get formatter for output mode
     formatter = get_formatter(get_output_mode())
 
-    try:
+    with cli_error_handler(formatter):
         # Parse dates
         after_date = datetime.fromisoformat(after) if after else None
         before_date = datetime.fromisoformat(before) if before else None
@@ -161,8 +160,3 @@ def mail(
                 ]
             )
             print_next_steps(formatter, hints)
-
-    except Exception as e:
-        logger.error(f"Failed to export Gmail: {e}")
-        formatter.print_error(f"Error: {e}")
-        raise typer.Exit(1) from e

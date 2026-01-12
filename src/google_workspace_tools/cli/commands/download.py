@@ -18,7 +18,7 @@ from ..schemas import (
     MirrorDocumentResult,
     MirrorOutput,
 )
-from ..utils import print_next_steps
+from ..utils import cli_error_handler, print_next_steps
 
 
 def download(
@@ -150,7 +150,7 @@ def download(
     errors: list[str] = []
     total_files = 0
 
-    try:
+    with cli_error_handler(formatter):
         if is_single_document and output_path:
             # Export single document with custom path
             result = exporter.export_document(documents[0], output_path=output_path)
@@ -236,16 +236,6 @@ def download(
         if errors:
             raise typer.Exit(1)
 
-    except FileNotFoundError as e:
-        formatter.print_error(f"Error: {e}")
-        formatter.print_info("Run 'gwt credentials login' to set up authentication")
-        raise typer.Exit(1) from e
-    except typer.Exit:
-        raise
-    except Exception as e:
-        formatter.print_error(f"Error: {e}")
-        raise typer.Exit(1) from e
-
 
 def mirror(
     config_file: Annotated[
@@ -295,7 +285,7 @@ def mirror(
     formatter.print_progress(f"[bold]Mirroring documents from {config_file}[/bold]")
     formatter.print_progress(f"Output: [cyan]{output}[/cyan], Format: [cyan]{format}[/cyan]\n")
 
-    try:
+    with cli_error_handler(formatter):
         results = exporter.mirror_documents(config_file)
 
         # Build document results (simplified - we don't have detailed per-document tracking)
@@ -347,12 +337,3 @@ def mirror(
         # Exit with error if no documents mirrored
         if not results:
             raise typer.Exit(1)
-
-    except FileNotFoundError as e:
-        formatter.print_error(f"Error: {e}")
-        raise typer.Exit(1) from e
-    except typer.Exit:
-        raise
-    except Exception as e:
-        formatter.print_error(f"Error: {e}")
-        raise typer.Exit(1) from e

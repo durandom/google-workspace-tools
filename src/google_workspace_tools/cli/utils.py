@@ -1,13 +1,62 @@
 """Common CLI utilities."""
 
+from contextlib import contextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Generator
+
+import typer
+from loguru import logger
 
 from ..core.config import GoogleDriveExporterConfig
 from ..core.exporter import GoogleDriveExporter
 
 if TYPE_CHECKING:
     from .formatters import BaseOutputFormatter
+
+
+@contextmanager
+def cli_error_handler(
+    formatter: "BaseOutputFormatter",
+    *,
+    auth_hint: bool = True,
+) -> Generator[None, None, None]:
+    """Context manager for consistent CLI error handling.
+
+    Provides standardized error handling across all CLI commands:
+    - FileNotFoundError: Suggests authentication if auth_hint=True
+    - typer.Exit: Re-raised unchanged (intentional exits)
+    - Exception: Logs and prints error, exits with code 1
+
+    Args:
+        formatter: Output formatter for printing errors
+        auth_hint: If True, show auth hint on FileNotFoundError
+
+    Yields:
+        None
+
+    Raises:
+        typer.Exit: On any error (code 1) or re-raised from inner code
+
+    Example:
+        with cli_error_handler(formatter):
+            exporter = GoogleDriveExporter(config)
+            exporter.export_emails(...)
+    """
+    try:
+        yield
+    except FileNotFoundError as e:
+        logger.error(f"File not found: {e}")
+        formatter.print_error(f"Error: {e}")
+        if auth_hint:
+            formatter.print_info("Run 'gwt credentials login' to authenticate")
+        raise typer.Exit(1) from e
+    except typer.Exit:
+        # Re-raise intentional exits unchanged
+        raise
+    except Exception as e:
+        logger.error(f"Command failed: {e}")
+        formatter.print_error(f"Error: {e}")
+        raise typer.Exit(1) from e
 
 
 def init_exporter(
