@@ -122,13 +122,15 @@ def main_callback(
     mode = OutputMode.JSON if json_output else OutputMode.HUMAN
     set_output_mode(mode)
 
-    # Determine log level
+    # Determine log level: -v=INFO, -vv=DEBUG, -vvv=TRACE
     if log_level:
         level = log_level.upper()
-    elif verbose >= 2:
+    elif verbose >= 3:
         level = "TRACE"
-    elif verbose == 1:
+    elif verbose == 2:
         level = "DEBUG"
+    elif verbose == 1:
+        level = "INFO"
     else:
         level = settings.log_level
 

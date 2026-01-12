@@ -52,7 +52,7 @@ class Settings(BaseSettings):
 
     # Logging settings
     log_level: str = Field(
-        default="INFO",
+        default="WARNING",
         description="Logging level (DEBUG, INFO, WARNING, ERROR)",
     )
     log_format: str = Field(
