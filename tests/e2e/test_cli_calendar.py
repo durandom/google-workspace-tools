@@ -38,7 +38,7 @@ class TestCalendarListDefault:
         mock_exporter = MagicMock()
         mock_exporter.list_calendars.return_value = [
             {"id": "primary", "summary": "My Calendar", "primary": True},
-            {"id": "work@example.com", "summary": "Work Calendar", "primary": False}
+            {"id": "work@example.com", "summary": "Work Calendar", "primary": False},
         ]
         mock_exporter_class.return_value = mock_exporter
 
@@ -50,7 +50,8 @@ class TestCalendarListDefault:
                 app,
                 [
                     "calendar",
-                    "-c", str(creds_file),
+                    "-c",
+                    str(creds_file),
                 ],
             )
 
@@ -74,7 +75,8 @@ class TestCalendarListDefault:
                 app,
                 [
                     "calendar",
-                    "-c", str(creds_file),
+                    "-c",
+                    str(creds_file),
                 ],
             )
 
@@ -89,7 +91,8 @@ class TestCalendarListDefault:
             app,
             [
                 "calendar",
-                "-c", "/nonexistent/creds.json",
+                "-c",
+                "/nonexistent/creds.json",
             ],
         )
 
@@ -102,21 +105,9 @@ class TestCalendarListDefault:
         """Test calendar list table formatting."""
         mock_exporter = MagicMock()
         mock_exporter.list_calendars.return_value = [
-            {
-                "id": "primary",
-                "summary": "Personal Calendar",
-                "primary": True
-            },
-            {
-                "id": "work@company.com",
-                "summary": "Work Calendar",
-                "primary": False
-            },
-            {
-                "id": "team@company.com",
-                "summary": "Team Events",
-                "primary": False
-            }
+            {"id": "primary", "summary": "Personal Calendar", "primary": True},
+            {"id": "work@company.com", "summary": "Work Calendar", "primary": False},
+            {"id": "team@company.com", "summary": "Team Events", "primary": False},
         ]
         mock_exporter_class.return_value = mock_exporter
 
@@ -128,7 +119,8 @@ class TestCalendarListDefault:
                 app,
                 [
                     "calendar",
-                    "-c", str(creds_file),
+                    "-c",
+                    str(creds_file),
                 ],
             )
 
@@ -158,9 +150,12 @@ class TestCalendarExportCommand:
                 app,
                 [
                     "calendar",
-                    "-a", "2024-01-01",
-                    "-b", "2024-12-31",
-                    "-c", str(creds_file),
+                    "-a",
+                    "2024-01-01",
+                    "-b",
+                    "2024-12-31",
+                    "-c",
+                    str(creds_file),
                 ],
             )
 
@@ -181,9 +176,12 @@ class TestCalendarExportCommand:
                 app,
                 [
                     "calendar",
-                    "--calendar", "work@example.com",
-                    "-a", "2024-01-01",  # Need a filter to trigger export
-                    "-c", str(creds_file),
+                    "--calendar",
+                    "work@example.com",
+                    "-a",
+                    "2024-01-01",  # Need a filter to trigger export
+                    "-c",
+                    str(creds_file),
                 ],
             )
 
@@ -204,8 +202,10 @@ class TestCalendarExportCommand:
                 app,
                 [
                     "calendar",
-                    "-q", "sprint planning",
-                    "-c", str(creds_file),
+                    "-q",
+                    "sprint planning",
+                    "-c",
+                    str(creds_file),
                 ],
             )
 
@@ -226,9 +226,12 @@ class TestCalendarExportCommand:
                 app,
                 [
                     "calendar",
-                    "-q", "meeting",  # Need a filter to trigger export
-                    "-f", "json",
-                    "-c", str(creds_file),
+                    "-q",
+                    "meeting",  # Need a filter to trigger export
+                    "-f",
+                    "json",
+                    "-c",
+                    str(creds_file),
                 ],
             )
 
@@ -249,9 +252,12 @@ class TestCalendarExportCommand:
                 app,
                 [
                     "calendar",
-                    "-q", "meeting",  # Need a filter to trigger export
-                    "-d", "2",
-                    "-c", str(creds_file),
+                    "-q",
+                    "meeting",  # Need a filter to trigger export
+                    "-d",
+                    "2",
+                    "-c",
+                    str(creds_file),
                 ],
             )
 
@@ -272,9 +278,12 @@ class TestCalendarExportCommand:
                 app,
                 [
                     "calendar",
-                    "-q", "meeting",  # Need a filter to trigger export
-                    "-n", "100",
-                    "-c", str(creds_file),
+                    "-q",
+                    "meeting",  # Need a filter to trigger export
+                    "-n",
+                    "100",
+                    "-c",
+                    str(creds_file),
                 ],
             )
 
@@ -286,8 +295,10 @@ class TestCalendarExportCommand:
             app,
             [
                 "calendar",
-                "-q", "meeting",  # Trigger export mode
-                "-c", "/nonexistent/creds.json",
+                "-q",
+                "meeting",  # Trigger export mode
+                "-c",
+                "/nonexistent/creds.json",
             ],
         )
 
@@ -302,7 +313,7 @@ class TestCalendarExportCommand:
         mock_exporter.export_calendar_events.return_value = {
             "event1": tmp_path / "event1.md",
             "event2": tmp_path / "event2.md",
-            "event3": tmp_path / "event3.md"
+            "event3": tmp_path / "event3.md",
         }
         mock_exporter_class.return_value = mock_exporter
 
@@ -314,8 +325,10 @@ class TestCalendarExportCommand:
                 app,
                 [
                     "calendar",
-                    "-q", "meeting",  # Trigger export mode
-                    "-c", str(creds_file),
+                    "-q",
+                    "meeting",  # Trigger export mode
+                    "-c",
+                    str(creds_file),
                 ],
             )
 
@@ -342,15 +355,24 @@ class TestCalendarIntegration:
                 app,
                 [
                     "calendar",
-                    "--calendar", "work@example.com",
-                    "-a", "2024-01-01",
-                    "-b", "2024-03-31",
-                    "-q", "meeting",
-                    "-f", "md",
-                    "-n", "100",
-                    "-d", "1",
-                    "-c", str(creds_file),
-                    "-o", str(tmp_path / "calendar"),
+                    "--calendar",
+                    "work@example.com",
+                    "-a",
+                    "2024-01-01",
+                    "-b",
+                    "2024-03-31",
+                    "-q",
+                    "meeting",
+                    "-f",
+                    "md",
+                    "-n",
+                    "100",
+                    "-d",
+                    "1",
+                    "-c",
+                    str(creds_file),
+                    "-o",
+                    str(tmp_path / "calendar"),
                 ],
             )
 
@@ -360,9 +382,7 @@ class TestCalendarIntegration:
     def test_workflow_list_then_export(self, mock_exporter_class, tmp_path):
         """Test realistic workflow: list calendars (no filters), then export with filters."""
         mock_exporter = MagicMock()
-        mock_exporter.list_calendars.return_value = [
-            {"id": "work@company.com", "summary": "Work", "primary": False}
-        ]
+        mock_exporter.list_calendars.return_value = [{"id": "work@company.com", "summary": "Work", "primary": False}]
         mock_exporter.export_calendar_events.return_value = {}
         mock_exporter_class.return_value = mock_exporter
 
@@ -382,9 +402,12 @@ class TestCalendarIntegration:
                 app,
                 [
                     "calendar",
-                    "--calendar", "work@company.com",
-                    "-q", "standup",  # Need a filter to trigger export
-                    "-c", str(creds_file),
+                    "--calendar",
+                    "work@company.com",
+                    "-q",
+                    "standup",  # Need a filter to trigger export
+                    "-c",
+                    str(creds_file),
                 ],
             )
 

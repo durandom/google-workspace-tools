@@ -18,7 +18,7 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaIoBaseDownload
-from html_to_markdown import convert_to_markdown
+from html_to_markdown import convert_to_markdown, convert_with_inline_images
 from loguru import logger
 
 from .config import GoogleDriveExporterConfig
@@ -273,9 +273,13 @@ class GoogleDriveExporter:
             # Use Drive API's about endpoint which works with drive.readonly scope
             service = build("drive", "v3", credentials=creds)
             about = service.about().get(fields="user(emailAddress)").execute()
-            email = about.get("user", {}).get("emailAddress")
-            logger.debug(f"Retrieved user email: {email}")
-            return email
+            user_data = about.get("user")
+            if isinstance(user_data, dict):
+                email = user_data.get("emailAddress")
+                if isinstance(email, str):
+                    logger.debug(f"Retrieved user email: {email}")
+                    return email
+            return None
         except Exception as e:
             logger.warning(f"Could not get user email: {e}")
             return None
@@ -825,12 +829,51 @@ class GoogleDriveExporter:
 
             # Handle markdown conversion
             if format_key == "md":
-                # Convert HTML to Markdown
+                # Convert HTML to Markdown and extract inline images
                 html_content = fh.getvalue().decode("utf-8")
-                markdown_content = convert_to_markdown(
-                    html_content,
-                    extract_metadata=False,  # Disable auto-frontmatter from HTML meta tags
-                )
+                markdown_content, images, _warnings = convert_with_inline_images(html_content)
+
+                # Save extracted images and update markdown references
+                if images:
+                    images_dir = output_path.parent / "images"
+                    images_dir.mkdir(parents=True, exist_ok=True)
+
+                    for img in images:
+                        img_data = img.get("data")
+                        img_filename = img.get("filename")
+                        if img_data and img_filename:
+                            img_path = images_dir / img_filename
+                            with open(img_path, "wb") as img_file:
+                                img_file.write(img_data)
+                            logger.debug(f"Saved image: {img_path}")
+
+                            # Replace base64 data URI with relative path in markdown
+                            # Markdown format: ![alt](url) or ![alt](url "title")
+                            # Note: 'description' from html_to_markdown may be title attr, not alt
+                            relative_path = f"images/{img_filename}"
+                            img_format = str(img.get("format") or "png")
+                            description = img.get("description") or ""
+
+                            # Match: ![any-alt](data:image/fmt;base64,data optional-title)
+                            # Capture alt text to preserve it in replacement
+                            base64_chars = r"[A-Za-z0-9+/=]+"
+                            optional_title = r'(?:\s+"[^"]*")?'
+                            pattern = (
+                                rf"!\[([^\]]*)\]\(data:image/{re.escape(img_format)};base64,"
+                                rf"{base64_chars}{optional_title}\)"
+                            )
+
+                            # Bind loop variables for closure
+                            def make_replacement(
+                                match: re.Match[str],
+                                rel_path: str = relative_path,
+                                desc: str = description,
+                            ) -> str:
+                                alt = match.group(1)  # Preserve original alt text
+                                final_alt = alt if alt else desc  # Use description if alt empty
+                                return f"![{final_alt}]({rel_path})"
+
+                            markdown_content = re.sub(pattern, make_replacement, markdown_content, count=1)
 
                 # Write markdown to file
                 with open(output_path, "w", encoding="utf-8") as f:
@@ -844,8 +887,8 @@ class GoogleDriveExporter:
                     f.write(markdown_content)
             else:
                 # Write binary data for other formats
-                with open(output_path, "wb") as f:
-                    f.write(fh.getvalue())
+                with open(output_path, "wb") as f_bin:
+                    f_bin.write(fh.getvalue())
 
             logger.success(f"Exported to {output_path}")
 
@@ -1136,12 +1179,13 @@ class GoogleDriveExporter:
                     # Create new workbook with only this sheet
                     wb_single = openpyxl.Workbook()
                     ws = wb_single.active
-                    ws.title = sheet_name
+                    if ws is not None:
+                        ws.title = sheet_name
 
-                    # Copy data
-                    for row in sheet.iter_rows(values_only=False):
-                        for cell in row:
-                            ws[cell.coordinate].value = cell.value
+                        # Copy data
+                        for row in sheet.iter_rows(values_only=False):
+                            for cell in row:
+                                ws[cell.coordinate].value = cell.value
 
                     # Save temporary single-sheet workbook
                     temp_xlsx = sheets_dir / f"_temp_{sheet_name}.xlsx"
@@ -1260,7 +1304,8 @@ class GoogleDriveExporter:
         if metadata and not self.is_google_workspace_file(metadata.get("mimeType", "")):
             mime_type = metadata.get("mimeType", "")
             logger.info(
-                f"Downloading raw file '{doc_title}' (ID: {document_id}, mime: {mime_type}) to {self.config.target_directory}"
+                f"Downloading raw file '{doc_title}' (ID: {document_id}, mime: {mime_type}) to "
+                f"{self.config.target_directory}"
             )
 
             # Determine file extension based on mime type or current format
@@ -1680,10 +1725,13 @@ class GoogleDriveExporter:
         threads: dict[str, list[dict[str, Any]]] = {}
 
         for message in messages:
-            thread_id = message.get("thread_id", message.get("id"))
-            if thread_id not in threads:
-                threads[thread_id] = []
-            threads[thread_id].append(message)
+            thread_id_raw = message.get("thread_id", message.get("id"))
+            # Ensure thread_id is a string before using as dict key
+            if isinstance(thread_id_raw, str):
+                thread_id: str = thread_id_raw
+                if thread_id not in threads:
+                    threads[thread_id] = []
+                threads[thread_id].append(message)
 
         # Sort messages within each thread by internal_date
         for thread_id in threads:
@@ -1973,7 +2021,11 @@ class GoogleDriveExporter:
             List of calendar metadata dictionaries
         """
         calendar_list = self.calendar_service.calendarList().list().execute()
-        return calendar_list.get("items", [])
+        items = calendar_list.get("items", [])
+        # Ensure we return a list of dicts
+        if isinstance(items, list):
+            return items
+        return []
 
     def get_calendar_event(self, event_id: str, calendar_id: str = "primary") -> dict[str, Any] | None:
         """Get a single calendar event by ID.
@@ -1989,10 +2041,12 @@ class GoogleDriveExporter:
             event = self.calendar_service.events().get(calendarId=calendar_id, eventId=event_id).execute()
 
             # Add calendar ID to event for consistency with paginated results
-            event["_calendar_id"] = calendar_id
-
-            logger.info(f"Fetched event: {event.get('summary', 'Untitled')} ({event_id})")
-            return event
+            # Ensure event is a dict before modifying
+            if isinstance(event, dict):
+                event["_calendar_id"] = calendar_id
+                logger.info(f"Fetched event: {event.get('summary', 'Untitled')} ({event_id})")
+                return event
+            return None
         except Exception as e:
             logger.error(f"Failed to fetch event {event_id}: {e}")
             return None

@@ -3,10 +3,9 @@
 import base64
 import json
 from datetime import datetime
-from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
+from pydantic import ValidationError
 
 from google_workspace_tools.core.config import GoogleDriveExporterConfig
 from google_workspace_tools.core.exporter import GoogleDriveExporter
@@ -28,10 +27,7 @@ class TestGmailSearchFilter:
 
     def test_build_query_with_dates(self):
         """Test query building with date filters."""
-        filter_obj = GmailSearchFilter(
-            after_date=datetime(2024, 1, 1),
-            before_date=datetime(2024, 12, 31)
-        )
+        filter_obj = GmailSearchFilter(after_date=datetime(2024, 1, 1), before_date=datetime(2024, 12, 31))
         query = filter_obj.build_query()
         assert "after:2024/01/01" in query
         assert "before:2024/12/31" in query
@@ -56,10 +52,7 @@ class TestGmailSearchFilter:
     def test_build_query_combined_filters(self):
         """Test query building with multiple filters combined."""
         filter_obj = GmailSearchFilter(
-            query="subject:meeting",
-            after_date=datetime(2024, 1, 1),
-            labels=["work"],
-            has_attachment=True
+            query="subject:meeting", after_date=datetime(2024, 1, 1), labels=["work"], has_attachment=True
         )
         query = filter_obj.build_query()
         assert "subject:meeting" in query
@@ -74,10 +67,10 @@ class TestGmailSearchFilter:
         assert filter_obj.max_results == 100
 
         # Test boundaries
-        with pytest.raises(Exception):  # Pydantic validation error
+        with pytest.raises(ValidationError):
             GmailSearchFilter(max_results=0)
 
-        with pytest.raises(Exception):  # Pydantic validation error
+        with pytest.raises(ValidationError):
             GmailSearchFilter(max_results=501)
 
     def test_default_values(self):
@@ -130,12 +123,7 @@ class TestExtractMessageBody:
         text_content = "This is a plain text email."
         encoded_text = base64.urlsafe_b64encode(text_content.encode()).decode()
 
-        message = {
-            "payload": {
-                "mimeType": "text/plain",
-                "body": {"data": encoded_text}
-            }
-        }
+        message = {"payload": {"mimeType": "text/plain", "body": {"data": encoded_text}}}
 
         text_body, html_body = exporter._extract_message_body(message)
         assert text_body == text_content
@@ -146,12 +134,7 @@ class TestExtractMessageBody:
         html_content = "<p>This is an HTML email.</p>"
         encoded_html = base64.urlsafe_b64encode(html_content.encode()).decode()
 
-        message = {
-            "payload": {
-                "mimeType": "text/html",
-                "body": {"data": encoded_html}
-            }
-        }
+        message = {"payload": {"mimeType": "text/html", "body": {"data": encoded_html}}}
 
         text_body, html_body = exporter._extract_message_body(message)
         assert text_body == ""
@@ -168,15 +151,9 @@ class TestExtractMessageBody:
             "payload": {
                 "mimeType": "multipart/alternative",
                 "parts": [
-                    {
-                        "mimeType": "text/plain",
-                        "body": {"data": encoded_text}
-                    },
-                    {
-                        "mimeType": "text/html",
-                        "body": {"data": encoded_html}
-                    }
-                ]
+                    {"mimeType": "text/plain", "body": {"data": encoded_text}},
+                    {"mimeType": "text/html", "body": {"data": encoded_html}},
+                ],
             }
         }
 
@@ -195,14 +172,9 @@ class TestExtractMessageBody:
                 "parts": [
                     {
                         "mimeType": "multipart/alternative",
-                        "parts": [
-                            {
-                                "mimeType": "text/plain",
-                                "body": {"data": encoded_text}
-                            }
-                        ]
+                        "parts": [{"mimeType": "text/plain", "body": {"data": encoded_text}}],
                     }
-                ]
+                ],
             }
         }
 
@@ -234,10 +206,7 @@ class TestExtractEmailAttachments:
                     {
                         "filename": "document.pdf",
                         "mimeType": "application/pdf",
-                        "body": {
-                            "attachmentId": "att123",
-                            "size": 12345
-                        }
+                        "body": {"attachmentId": "att123", "size": 12345},
                     }
                 ]
             }
@@ -258,13 +227,9 @@ class TestExtractEmailAttachments:
                     {
                         "filename": "doc1.pdf",
                         "mimeType": "application/pdf",
-                        "body": {"attachmentId": "att1", "size": 1000}
+                        "body": {"attachmentId": "att1", "size": 1000},
                     },
-                    {
-                        "filename": "image.png",
-                        "mimeType": "image/png",
-                        "body": {"attachmentId": "att2", "size": 2000}
-                    }
+                    {"filename": "image.png", "mimeType": "image/png", "body": {"attachmentId": "att2", "size": 2000}},
                 ]
             }
         }
@@ -276,16 +241,7 @@ class TestExtractEmailAttachments:
 
     def test_extract_no_attachments(self, exporter):
         """Test extraction with no attachments."""
-        message = {
-            "payload": {
-                "parts": [
-                    {
-                        "mimeType": "text/plain",
-                        "body": {"data": "dGV4dA=="}
-                    }
-                ]
-            }
-        }
+        message = {"payload": {"parts": [{"mimeType": "text/plain", "body": {"data": "dGV4dA=="}}]}}
 
         attachments = exporter._extract_email_attachments(message)
         assert len(attachments) == 0
@@ -301,9 +257,9 @@ class TestExtractEmailAttachments:
                             {
                                 "filename": "nested.doc",
                                 "mimeType": "application/msword",
-                                "body": {"attachmentId": "att123", "size": 5000}
+                                "body": {"attachmentId": "att123", "size": 5000},
                             }
-                        ]
+                        ],
                     }
                 ]
             }
@@ -327,7 +283,7 @@ class TestGroupMessagesByThread:
         messages = [
             {"id": "msg1", "thread_id": "thread1", "internal_date": "1000"},
             {"id": "msg2", "thread_id": "thread1", "internal_date": "2000"},
-            {"id": "msg3", "thread_id": "thread1", "internal_date": "1500"}
+            {"id": "msg3", "thread_id": "thread1", "internal_date": "1500"},
         ]
 
         threads = exporter._group_messages_by_thread(messages)
@@ -345,7 +301,7 @@ class TestGroupMessagesByThread:
         messages = [
             {"id": "msg1", "thread_id": "thread1", "internal_date": "1000"},
             {"id": "msg2", "thread_id": "thread2", "internal_date": "2000"},
-            {"id": "msg3", "thread_id": "thread1", "internal_date": "3000"}
+            {"id": "msg3", "thread_id": "thread1", "internal_date": "3000"},
         ]
 
         threads = exporter._group_messages_by_thread(messages)
@@ -361,10 +317,7 @@ class TestGroupMessagesByThread:
 
     def test_group_messages_without_thread_id(self, exporter):
         """Test grouping messages that lack thread_id (use message id)."""
-        messages = [
-            {"id": "msg1", "internal_date": "1000"},
-            {"id": "msg2", "internal_date": "2000"}
-        ]
+        messages = [{"id": "msg1", "internal_date": "1000"}, {"id": "msg2", "internal_date": "2000"}]
 
         threads = exporter._group_messages_by_thread(messages)
         assert len(threads) == 2
@@ -390,7 +343,7 @@ class TestExportEmailThreadAsJSON:
                 "text_body": "Hello",
                 "html_body": "",
                 "attachments": [],
-                "internal_date": "1000"
+                "internal_date": "1000",
             }
         ]
 
@@ -417,15 +370,15 @@ class TestExportEmailThreadAsJSON:
                 "headers": {"Subject": "Re: Meeting"},
                 "text_body": "First message",
                 "html_body": "",
-                "attachments": []
+                "attachments": [],
             },
             {
                 "id": "msg2",
                 "headers": {"Subject": "Re: Meeting"},
                 "text_body": "Second message",
                 "html_body": "",
-                "attachments": []
-            }
+                "attachments": [],
+            },
         ]
 
         output_path = tmp_path / "thread.json"
@@ -456,12 +409,12 @@ class TestExportEmailThreadAsMarkdown:
                     "Subject": "Meeting Notes",
                     "From": "sender@example.com",
                     "To": "recipient@example.com",
-                    "Date": "Mon, 1 Jan 2024 10:00:00 +0000"
+                    "Date": "Mon, 1 Jan 2024 10:00:00 +0000",
                 },
                 "text_body": "Let's meet tomorrow.",
                 "html_body": "",
                 "attachments": [],
-                "label_ids": ["INBOX", "IMPORTANT"]
+                "label_ids": ["INBOX", "IMPORTANT"],
             }
         ]
 
@@ -491,7 +444,7 @@ class TestExportEmailThreadAsMarkdown:
                 "text_body": "",
                 "html_body": "<p>This is <strong>bold</strong> text.</p>",
                 "attachments": [],
-                "label_ids": []
+                "label_ids": [],
             }
         ]
 
@@ -511,11 +464,8 @@ class TestExportEmailThreadAsMarkdown:
                 "headers": {"Subject": "Files Attached"},
                 "text_body": "See attachments",
                 "html_body": "",
-                "attachments": [
-                    {"filename": "document.pdf", "size": 10240},
-                    {"filename": "image.png", "size": 5120}
-                ],
-                "label_ids": []
+                "attachments": [{"filename": "document.pdf", "size": 10240}, {"filename": "image.png", "size": 5120}],
+                "label_ids": [],
             }
         ]
 

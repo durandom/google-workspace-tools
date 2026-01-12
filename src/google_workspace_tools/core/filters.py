@@ -130,9 +130,7 @@ class CalendarEventFilter(BaseModel):
     single_events: bool = Field(
         default=True, description="Whether to expand recurring events into individual instances. Default is True"
     )
-    max_results: int = Field(
-        default=250, ge=1, le=2500, description="Maximum number of events to return per calendar"
-    )
+    max_results: int = Field(default=250, ge=1, le=2500, description="Maximum number of events to return per calendar")
     order_by: Literal["startTime", "updated"] = Field(
         default="startTime",
         description="The order of the events returned. "

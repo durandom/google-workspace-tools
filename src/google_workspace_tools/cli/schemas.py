@@ -1,5 +1,6 @@
 """Output schemas for CLI commands."""
 
+import contextlib
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -24,9 +25,7 @@ class CommandOutput(BaseModel):
 
     command: str = Field(..., description="Command name (download, mail, calendar, mirror)")
     success: bool = Field(..., description="Overall success status")
-    timestamp: str = Field(
-        default_factory=lambda: datetime.now(UTC).isoformat(), description="ISO 8601 timestamp"
-    )
+    timestamp: str = Field(default_factory=lambda: datetime.now(UTC).isoformat(), description="ISO 8601 timestamp")
     version: str = Field(..., description="CLI version")
     errors: list[str] = Field(default_factory=list, description="List of error messages")
 
@@ -54,10 +53,8 @@ class ExportedFile(BaseModel):
         """
         size = None
         if path.exists():
-            try:
+            with contextlib.suppress(OSError, PermissionError):
                 size = path.stat().st_size
-            except (OSError, PermissionError):
-                pass
         return cls(format=format, path=str(path.absolute()), size_bytes=size)
 
 
@@ -95,9 +92,7 @@ class EmailThreadExport(BaseModel):
     message_count: int = Field(..., description="Number of messages in thread")
     participants: list[str] = Field(default_factory=list, description="Email participants")
     export_path: str = Field(..., description="Path to exported file")
-    date_range: dict[str, str] = Field(
-        default_factory=dict, description="First and last message dates (ISO 8601)"
-    )
+    date_range: dict[str, str] = Field(default_factory=dict, description="First and last message dates (ISO 8601)")
     has_attachments: bool = Field(False, description="Whether thread has attachments")
     drive_links_found: int = Field(0, description="Number of Google Drive links discovered")
 
@@ -178,9 +173,7 @@ class MirrorOutput(CommandOutput):
 
     config_file: str = Field(..., description="Path to mirror configuration file")
     documents_configured: int = Field(0, description="Number of documents in config")
-    documents: list[MirrorDocumentResult] = Field(
-        default_factory=list, description="List of mirrored documents"
-    )
+    documents: list[MirrorDocumentResult] = Field(default_factory=list, description="List of mirrored documents")
     total_files_exported: int = Field(0, description="Total files exported across all documents")
     output_directory: str = Field(..., description="Output directory path")
     export_format: str = Field(..., description="Export format used")

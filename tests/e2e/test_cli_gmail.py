@@ -45,8 +45,10 @@ class TestMailCommand:
                 app,
                 [
                     "mail",
-                    "-c", str(tmp_path / "creds.json"),
-                    "-o", str(tmp_path / "emails"),
+                    "-c",
+                    str(tmp_path / "creds.json"),
+                    "-o",
+                    str(tmp_path / "emails"),
                 ],
             )
 
@@ -69,10 +71,14 @@ class TestMailCommand:
                 app,
                 [
                     "mail",
-                    "-q", "from:boss@example.com",
-                    "-f", "md",
-                    "-c", str(creds_file),
-                    "-o", str(tmp_path / "emails"),
+                    "-q",
+                    "from:boss@example.com",
+                    "-f",
+                    "md",
+                    "-c",
+                    str(creds_file),
+                    "-o",
+                    str(tmp_path / "emails"),
                 ],
             )
 
@@ -93,9 +99,12 @@ class TestMailCommand:
                 app,
                 [
                     "mail",
-                    "-a", "2024-01-01",
-                    "-b", "2024-12-31",
-                    "-c", str(creds_file),
+                    "-a",
+                    "2024-01-01",
+                    "-b",
+                    "2024-12-31",
+                    "-c",
+                    str(creds_file),
                 ],
             )
 
@@ -116,8 +125,10 @@ class TestMailCommand:
                 app,
                 [
                     "mail",
-                    "-l", "work,important",
-                    "-c", str(creds_file),
+                    "-l",
+                    "work,important",
+                    "-c",
+                    str(creds_file),
                 ],
             )
 
@@ -138,8 +149,10 @@ class TestMailCommand:
                 app,
                 [
                     "mail",
-                    "-f", "json",
-                    "-c", str(creds_file),
+                    "-f",
+                    "json",
+                    "-c",
+                    str(creds_file),
                 ],
             )
 
@@ -160,8 +173,10 @@ class TestMailCommand:
                 app,
                 [
                     "mail",
-                    "-m", "individual",
-                    "-c", str(creds_file),
+                    "-m",
+                    "individual",
+                    "-c",
+                    str(creds_file),
                 ],
             )
 
@@ -182,8 +197,10 @@ class TestMailCommand:
                 app,
                 [
                     "mail",
-                    "-d", "2",
-                    "-c", str(creds_file),
+                    "-d",
+                    "2",
+                    "-c",
+                    str(creds_file),
                 ],
             )
 
@@ -204,8 +221,10 @@ class TestMailCommand:
                 app,
                 [
                     "mail",
-                    "-n", "50",
-                    "-c", str(creds_file),
+                    "-n",
+                    "50",
+                    "-c",
+                    str(creds_file),
                 ],
             )
 
@@ -217,7 +236,8 @@ class TestMailCommand:
             app,
             [
                 "mail",
-                "-c", "/nonexistent/creds.json",
+                "-c",
+                "/nonexistent/creds.json",
             ],
         )
 
@@ -231,7 +251,7 @@ class TestMailCommand:
         mock_exporter = MagicMock()
         mock_exporter.export_emails.return_value = {
             "thread1": tmp_path / "thread1.md",
-            "thread2": tmp_path / "thread2.md"
+            "thread2": tmp_path / "thread2.md",
         }
         mock_exporter_class.return_value = mock_exporter
 
@@ -243,7 +263,8 @@ class TestMailCommand:
                 app,
                 [
                     "mail",
-                    "-c", str(creds_file),
+                    "-c",
+                    str(creds_file),
                 ],
             )
 
@@ -270,15 +291,24 @@ class TestMailIntegration:
                 app,
                 [
                     "mail",
-                    "-q", "has:attachment",
-                    "-a", "2024-01-01",
-                    "-l", "work,important",
-                    "-f", "md",
-                    "-m", "thread",
-                    "-n", "100",
-                    "-d", "1",
-                    "-c", str(creds_file),
-                    "-o", str(tmp_path / "emails"),
+                    "-q",
+                    "has:attachment",
+                    "-a",
+                    "2024-01-01",
+                    "-l",
+                    "work,important",
+                    "-f",
+                    "md",
+                    "-m",
+                    "thread",
+                    "-n",
+                    "100",
+                    "-d",
+                    "1",
+                    "-c",
+                    str(creds_file),
+                    "-o",
+                    str(tmp_path / "emails"),
                 ],
             )
 

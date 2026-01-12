@@ -2,9 +2,9 @@
 
 import json
 from datetime import datetime
-from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from google_workspace_tools.core.config import GoogleDriveExporterConfig
 from google_workspace_tools.core.exporter import GoogleDriveExporter
@@ -32,13 +32,8 @@ class TestCalendarEventFilter:
 
     def test_get_calendar_ids_custom(self):
         """Test getting custom calendar IDs."""
-        filter_obj = CalendarEventFilter(
-            calendar_ids=["work@example.com", "personal@example.com"]
-        )
-        assert filter_obj.get_calendar_ids() == [
-            "work@example.com",
-            "personal@example.com"
-        ]
+        filter_obj = CalendarEventFilter(calendar_ids=["work@example.com", "personal@example.com"])
+        assert filter_obj.get_calendar_ids() == ["work@example.com", "personal@example.com"]
 
     def test_get_calendar_ids_empty_list(self):
         """Test that empty list defaults to primary."""
@@ -66,10 +61,10 @@ class TestCalendarEventFilter:
         assert filter_obj.max_results == 100
 
         # Test boundaries
-        with pytest.raises(Exception):  # Pydantic validation error
+        with pytest.raises(ValidationError):
             CalendarEventFilter(max_results=0)
 
-        with pytest.raises(Exception):  # Pydantic validation error
+        with pytest.raises(ValidationError):
             CalendarEventFilter(max_results=2501)
 
     def test_order_by_options(self):
@@ -82,7 +77,7 @@ class TestCalendarEventFilter:
         assert filter_obj.order_by == "updated"
 
         # Invalid option should fail
-        with pytest.raises(Exception):  # Pydantic validation error
+        with pytest.raises(ValidationError):
             CalendarEventFilter(order_by="invalid")
 
     def test_single_events_flag(self):
@@ -135,7 +130,7 @@ class TestExportCalendarEventAsJSON:
             "description": "Weekly sync",
             "start": {"dateTime": "2024-01-15T10:00:00Z"},
             "end": {"dateTime": "2024-01-15T11:00:00Z"},
-            "attendees": []
+            "attendees": [],
         }
 
         output_path = tmp_path / "event.json"
@@ -154,12 +149,7 @@ class TestExportCalendarEventAsJSON:
 
     def test_export_all_day_event_json(self, exporter, tmp_path):
         """Test exporting all-day event."""
-        event = {
-            "id": "event456",
-            "summary": "Holiday",
-            "start": {"date": "2024-12-25"},
-            "end": {"date": "2024-12-26"}
-        }
+        event = {"id": "event456", "summary": "Holiday", "start": {"date": "2024-12-25"}, "end": {"date": "2024-12-26"}}
 
         output_path = tmp_path / "event.json"
         success = exporter._export_calendar_event_as_json(event, output_path)
@@ -179,12 +169,7 @@ class TestExportCalendarEventAsJSON:
             "description": "Review slides",
             "start": {"dateTime": "2024-01-20T14:00:00Z"},
             "end": {"dateTime": "2024-01-20T15:00:00Z"},
-            "attachments": [
-                {
-                    "fileUrl": "https://drive.google.com/file/d/abc123/view",
-                    "title": "Slides.pptx"
-                }
-            ]
+            "attachments": [{"fileUrl": "https://drive.google.com/file/d/abc123/view", "title": "Slides.pptx"}],
         }
 
         output_path = tmp_path / "event.json"
@@ -216,11 +201,8 @@ class TestExportCalendarEventAsMarkdown:
             "location": "Conference Room A",
             "start": {"dateTime": "2024-01-15T09:00:00Z"},
             "end": {"dateTime": "2024-01-15T09:30:00Z"},
-            "organizer": {
-                "email": "organizer@example.com",
-                "displayName": "Team Lead"
-            },
-            "attendees": []
+            "organizer": {"email": "organizer@example.com", "displayName": "Team Lead"},
+            "attendees": [],
         }
 
         output_path = tmp_path / "event.md"
@@ -252,19 +234,9 @@ class TestExportCalendarEventAsMarkdown:
             "end": {"dateTime": "2024-01-20T16:00:00Z"},
             "organizer": {"email": "boss@example.com"},
             "attendees": [
-                {
-                    "email": "alice@example.com",
-                    "displayName": "Alice",
-                    "responseStatus": "accepted",
-                    "organizer": True
-                },
-                {
-                    "email": "bob@example.com",
-                    "displayName": "Bob",
-                    "responseStatus": "tentative",
-                    "optional": True
-                }
-            ]
+                {"email": "alice@example.com", "displayName": "Alice", "responseStatus": "accepted", "organizer": True},
+                {"email": "bob@example.com", "displayName": "Bob", "responseStatus": "tentative", "optional": True},
+            ],
         }
 
         output_path = tmp_path / "event.md"
@@ -289,7 +261,7 @@ class TestExportCalendarEventAsMarkdown:
             "summary": "Conference",
             "start": {"date": "2024-03-15"},
             "end": {"date": "2024-03-16"},
-            "organizer": {}
+            "organizer": {},
         }
 
         output_path = tmp_path / "event.md"
@@ -311,7 +283,7 @@ class TestExportCalendarEventAsMarkdown:
             "description": "<p>Topics to cover:</p><ul><li>Item 1</li><li>Item 2</li></ul>",
             "start": {"dateTime": "2024-02-01T10:00:00Z"},
             "end": {"dateTime": "2024-02-01T12:00:00Z"},
-            "organizer": {}
+            "organizer": {},
         }
 
         output_path = tmp_path / "event.md"
@@ -334,15 +306,9 @@ class TestExportCalendarEventAsMarkdown:
             "end": {"dateTime": "2024-01-25T16:00:00Z"},
             "organizer": {},
             "attachments": [
-                {
-                    "fileUrl": "https://docs.google.com/document/d/abc123",
-                    "title": "Meeting Agenda"
-                },
-                {
-                    "fileUrl": "https://docs.google.com/spreadsheets/d/xyz789",
-                    "title": "Budget Sheet"
-                }
-            ]
+                {"fileUrl": "https://docs.google.com/document/d/abc123", "title": "Meeting Agenda"},
+                {"fileUrl": "https://docs.google.com/spreadsheets/d/xyz789", "title": "Budget Sheet"},
+            ],
         }
 
         output_path = tmp_path / "event.md"
@@ -363,7 +329,7 @@ class TestExportCalendarEventAsMarkdown:
             "_calendar_id": "primary",
             "start": {"dateTime": "2024-01-10T08:00:00Z"},
             "end": {"dateTime": "2024-01-10T09:00:00Z"},
-            "organizer": {}
+            "organizer": {},
         }
 
         output_path = tmp_path / "event.md"
@@ -383,7 +349,7 @@ class TestExportCalendarEventAsMarkdown:
             "summary": "Virtual Meeting",
             "start": {"dateTime": "2024-01-30T11:00:00Z"},
             "end": {"dateTime": "2024-01-30T12:00:00Z"},
-            "organizer": {}
+            "organizer": {},
         }
 
         output_path = tmp_path / "event.md"
@@ -411,7 +377,7 @@ class TestCalendarTimezoneHandling:
             "summary": "Test Event",
             "start": {"dateTime": "2024-01-15T10:00:00-05:00"},
             "end": {"dateTime": "2024-01-15T11:00:00-05:00"},
-            "organizer": {}
+            "organizer": {},
         }
 
         output_path = tmp_path / "event.json"
@@ -430,7 +396,7 @@ class TestCalendarTimezoneHandling:
             "summary": "UTC Event",
             "start": {"dateTime": "2024-01-15T15:00:00Z"},
             "end": {"dateTime": "2024-01-15T16:00:00Z"},
-            "organizer": {}
+            "organizer": {},
         }
 
         output_path = tmp_path / "event.json"
@@ -448,7 +414,7 @@ class TestCalendarTimezoneHandling:
             "summary": "All Day Event",
             "start": {"date": "2024-01-15"},
             "end": {"date": "2024-01-16"},
-            "organizer": {}
+            "organizer": {},
         }
 
         output_path = tmp_path / "event.json"

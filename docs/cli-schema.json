@@ -5,11 +5,7 @@
   "commands": {
     "download": {
       "name": "download",
-      "help": "Download one or more Google Drive documents.\n\nExamples:\n    gwt download https://docs.google.com/document/d/abc123/edit\n    gwt download abc123 def456 
--f pdf -o ./downloads\n    gwt download https://docs.google.com/.../edit -d 2  # Follow links 2 levels deep\n    gwt download URL -o meetings/notes.md 
---enable-frontmatter -m \"date=2024-01-15\" -m \"type=meeting\"\n    gwt download URL -o notes.md --enable-frontmatter --frontmatter-file meta.yaml\n    gwt download 
-SPREADSHEET_URL -f md -s combined  # Single markdown with all sheets\n    gwt download SPREADSHEET_URL -f md -s separate  # One markdown per sheet\n    gwt download 
-SPREADSHEET_URL -f md -s csv  # Legacy CSV export",
+      "help": "Download one or more Google Drive documents.\\n\\nExamples:\\n    gwt download https://docs.google.com/document/d/abc123/edit\\n    gwt download abc123 def456 -f pdf -o ./downloads\\n    gwt download https://docs.google.com/.../edit -d 2  # Follow links 2 levels deep\\n    gwt download URL -o meetings/notes.md --enable-frontmatter -m \\\"date=2024-01-15\\\" -m \\\"type=meeting\\\"\\n    gwt download URL -o notes.md --enable-frontmatter --frontmatter-file meta.yaml\\n    gwt download SPREADSHEET_URL -f md -s combined  # Single markdown with all sheets\\n    gwt download SPREADSHEET_URL -f md -s separate  # One markdown per sheet\\n    gwt download SPREADSHEET_URL -f md -s csv  # Legacy CSV export",
       "options": [
         {
           "name": "output",
@@ -129,9 +125,7 @@ SPREADSHEET_URL -f md -s csv  # Legacy CSV export",
     },
     "mirror": {
       "name": "mirror",
-      "help": "Mirror documents from a configuration file.\n\nThe config file uses a simple text format:\n    # Comments start with #\n    
-https://docs.google.com/document/d/ID/edit depth=2 # Optional comment\n    https://docs.google.com/document/d/ID/edit # Uses default depth=0\n\nExamples:\n    gwt mirror 
-sources.txt\n    gwt mirror documents.yaml -o ./mirror -f pdf",
+      "help": "Mirror documents from a configuration file.\\n\\nThe config file uses a simple text format:\\n    # Comments start with #\\n    https://docs.google.com/document/d/ID/edit depth=2 # Optional comment\\n    https://docs.google.com/document/d/ID/edit # Uses default depth=0\\n\\nExamples:\\n    gwt mirror sources.txt\\n    gwt mirror documents.yaml -o ./mirror -f pdf",
       "options": [
         {
           "name": "output",
@@ -182,8 +176,7 @@ sources.txt\n    gwt mirror documents.yaml -o ./mirror -f pdf",
     },
     "auth": {
       "name": "auth",
-      "help": "Authenticate with Google Drive API.\n\nThis will open a browser window for OAuth authentication.\nThe token will be saved for future use.\n\nExamples:\n   
-gwt auth\n    gwt auth -c /path/to/credentials.json",
+      "help": "Authenticate with Google Drive API.\\n\\nThis will open a browser window for OAuth authentication.\\nThe token will be saved for future use.\\n\\nExamples:\\n    gwt auth\\n    gwt auth -c /path/to/credentials.json",
       "options": [
         {
           "name": "credentials",
@@ -245,8 +238,7 @@ gwt auth\n    gwt auth -c /path/to/credentials.json",
     },
     "formats": {
       "name": "formats",
-      "help": "List supported export formats for different document types.\n\nExamples:\n    gwt formats\n    gwt formats -t spreadsheet\n    gwt formats -t presentation 
---json",
+      "help": "List supported export formats for different document types.\\n\\nExamples:\\n    gwt formats\\n    gwt formats -t spreadsheet\\n    gwt formats -t presentation --json",
       "options": [
         {
           "name": "doc_type",
@@ -277,8 +269,7 @@ gwt auth\n    gwt auth -c /path/to/credentials.json",
     },
     "extract-id": {
       "name": "extract-id",
-      "help": "Extract document ID from a Google Drive URL.\n\nExamples:\n    gwt extract-id https://docs.google.com/document/d/abc123/edit\n    gwt extract-id 
-\"https://docs.google.com/spreadsheets/d/xyz789/edit#gid=0\"",
+      "help": "Extract document ID from a Google Drive URL.\\n\\nExamples:\\n    gwt extract-id https://docs.google.com/document/d/abc123/edit\\n    gwt extract-id \\\"https://docs.google.com/spreadsheets/d/xyz789/edit#gid=0\\\"",
       "options": [],
       "arguments": [
         {
@@ -292,8 +283,7 @@ gwt auth\n    gwt auth -c /path/to/credentials.json",
     },
     "mail": {
       "name": "mail",
-      "help": "Export Gmail messages to JSON or Markdown.\n\nExamples:\n    gwt mail -q \"from:boss@example.com\" -f md\n\n    gwt mail -a 2024-01-01 -l 
-work,important\n\n    gwt mail -q \"has:attachment\" -d 2",
+      "help": "Export Gmail messages to JSON or Markdown.\\n\\nExamples:\\n    gwt mail -q \\\"from:boss@example.com\\\" -f md\\n\\n    gwt mail -a 2024-01-01 -l work,important\\n\\n    gwt mail -q \\\"has:attachment\\\" -d 2",
       "options": [
         {
           "name": "query",
@@ -432,9 +422,7 @@ work,important\n\n    gwt mail -q \"has:attachment\" -d 2",
     },
     "calendar": {
       "name": "calendar",
-      "help": "Export Google Calendar events to JSON or Markdown.\n\nIf no filters are provided, lists all accessible calendars.\n\nExamples:\n    gwt calendar           
-# List calendars\n\n    gwt calendar -a 2024-01-01 -b 2024-12-31  # Export events\n\n    gwt calendar --calendar work -q \"sprint\"\n\n    gwt calendar -d 2              
-# Follow links in events",
+      "help": "Export Google Calendar events to JSON or Markdown.\\n\\nIf no filters are provided, lists all accessible calendars.\\n\\nExamples:\\n    gwt calendar # List calendars\\n\\n    gwt calendar -a 2024-01-01 -b 2024-12-31  # Export events\\n\\n    gwt calendar --calendar work -q \\\"sprint\\\"\\n\\n    gwt calendar -d 2 # Follow links in events",
       "options": [
         {
           "name": "calendar_id",
@@ -560,8 +548,7 @@ work,important\n\n    gwt mail -q \"has:attachment\" -d 2",
     },
     "dump-schema": {
       "name": "dump-schema",
-      "help": "Dump CLI schema showing all commands and options.\n\nUseful for documentation generation and shell completion debugging.\n\nExamples:\n    gwt 
-dump-schema\n    gwt dump-schema -f yaml",
+      "help": "Dump CLI schema showing all commands and options.\\n\\nUseful for documentation generation and shell completion debugging.\\n\\nExamples:\\n    gwt dump-schema\\n    gwt dump-schema -f yaml",
       "options": [
         {
           "name": "output_format",

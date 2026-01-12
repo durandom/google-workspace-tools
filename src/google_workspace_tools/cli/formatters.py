@@ -10,16 +10,11 @@ from rich.table import Table
 
 from .output import OutputMode
 from .schemas import (
-    CalendarEventExport,
-    CalendarInfo,
     CalendarListOutput,
     CalendarOutput,
     CommandOutput,
-    DocumentExport,
     DownloadOutput,
-    EmailThreadExport,
     MailOutput,
-    MirrorDocumentResult,
     MirrorOutput,
 )
 
@@ -151,7 +146,7 @@ class HumanOutputFormatter(BaseOutputFormatter):
                     self.console.print(f"  [blue]{thread.export_path}[/blue]")
             self.console.print(f"\n[dim]Output directory: {result.output_directory}[/dim]")
         else:
-            self.console.print(f"[yellow]Export completed with errors[/yellow]")
+            self.console.print("[yellow]Export completed with errors[/yellow]")
             for error in result.errors:
                 self.console.print(f"  [red]{error}[/red]")
 

@@ -12,9 +12,7 @@ class OutputMode(str, Enum):
 
 
 # Thread-local context for output mode
-_output_mode_var: contextvars.ContextVar[OutputMode] = contextvars.ContextVar(
-    "output_mode", default=OutputMode.HUMAN
-)
+_output_mode_var: contextvars.ContextVar[OutputMode] = contextvars.ContextVar("output_mode", default=OutputMode.HUMAN)
 
 
 def set_output_mode(mode: OutputMode) -> None:
