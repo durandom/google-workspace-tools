@@ -10,7 +10,7 @@ from ... import __version__
 from ...core.config import GoogleDriveExporterConfig
 from ...core.exporter import GoogleDriveExporter
 from ..formatters import get_formatter
-from ..output import get_output_mode
+from ..output import OutputMode, get_output_mode
 from ..schemas import (
     DocumentExport,
     DownloadOutput,
@@ -18,6 +18,7 @@ from ..schemas import (
     MirrorDocumentResult,
     MirrorOutput,
 )
+from ..utils import print_next_steps
 
 
 def download(
@@ -221,6 +222,16 @@ def download(
         # Print result
         formatter.print_result(output_schema)
 
+        # Print next-step hints (only for human output mode)
+        if get_output_mode() == OutputMode.HUMAN:
+            print_next_steps(
+                formatter,
+                [
+                    ("gwt mail -q 'from:...'", "Export related Gmail messages"),
+                    ("gwt calendar -a YYYY-MM-DD", "Export related calendar events"),
+                ],
+            )
+
         # Exit with error if there were any errors
         if errors:
             raise typer.Exit(1)
@@ -322,6 +333,16 @@ def mirror(
 
         # Print result
         formatter.print_result(output_schema)
+
+        # Print next-step hints (only for human output mode)
+        if get_output_mode() == OutputMode.HUMAN:
+            print_next_steps(
+                formatter,
+                [
+                    ("gwt mail -q 'from:...'", "Export related Gmail messages"),
+                    ("gwt calendar -a YYYY-MM-DD", "Export related calendar events"),
+                ],
+            )
 
         # Exit with error if no documents mirrored
         if not results:

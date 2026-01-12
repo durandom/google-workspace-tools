@@ -1,9 +1,13 @@
 """Common CLI utilities."""
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from ..core.config import GoogleDriveExporterConfig
 from ..core.exporter import GoogleDriveExporter
+
+if TYPE_CHECKING:
+    from .formatters import BaseOutputFormatter
 
 
 def init_exporter(
@@ -98,3 +102,21 @@ def sanitize_filename(filename: str, max_length: int = 200) -> str:
     sanitized = sanitized.strip(" _")
 
     return sanitized or "untitled"
+
+
+def print_next_steps(formatter: "BaseOutputFormatter", hints: list[tuple[str, str]]) -> None:
+    """Print next-step hints for agentic CLI.
+
+    This follows the agentic CLI pattern where every command output suggests
+    logical next actions, helping both AI agents and humans discover workflows.
+
+    Args:
+        formatter: Output formatter instance
+        hints: List of (command, description) tuples
+    """
+    if not hints:
+        return
+
+    formatter.print_info("\nNext steps:")
+    for cmd, desc in hints:
+        formatter.print_info(f"  {cmd:<40} {desc}")

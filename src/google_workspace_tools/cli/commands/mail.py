@@ -12,8 +12,9 @@ from ...core.config import GoogleDriveExporterConfig
 from ...core.exporter import GoogleDriveExporter
 from ...core.filters import GmailSearchFilter
 from ..formatters import get_formatter
-from ..output import get_output_mode
+from ..output import OutputMode, get_output_mode
 from ..schemas import EmailThreadExport, MailOutput
+from ..utils import print_next_steps
 
 
 def mail(
@@ -121,6 +122,28 @@ def mail(
 
         # Print result
         formatter.print_result(output_schema)
+
+        # Print next-step hints (only for human output mode)
+        if get_output_mode() == OutputMode.HUMAN:
+            # Check if any Drive links were found in exported threads
+            drive_links_found = sum(t.drive_links_found for t in threads)
+            hints: list[tuple[str, str]] = []
+
+            if drive_links_found > 0:
+                hints.append(
+                    (
+                        f"gwt download <URL> -d {depth or 1}",
+                        f"Download {drive_links_found} linked Drive doc(s)",
+                    )
+                )
+
+            hints.extend(
+                [
+                    ("gwt calendar -a YYYY-MM-DD", "Export related calendar events"),
+                    ("gwt download <URL>", "Download a specific document"),
+                ]
+            )
+            print_next_steps(formatter, hints)
 
     except Exception as e:
         logger.error(f"Failed to export Gmail: {e}")

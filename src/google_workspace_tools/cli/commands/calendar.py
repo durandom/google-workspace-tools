@@ -12,13 +12,14 @@ from ...core.config import GoogleDriveExporterConfig
 from ...core.exporter import GoogleDriveExporter
 from ...core.filters import CalendarEventFilter
 from ..formatters import get_formatter
-from ..output import get_output_mode
+from ..output import OutputMode, get_output_mode
 from ..schemas import (
     CalendarEventExport,
     CalendarInfo,
     CalendarListOutput,
     CalendarOutput,
 )
+from ..utils import print_next_steps
 
 
 def _list_calendars(exporter: GoogleDriveExporter, formatter: Any) -> CalendarListOutput:
@@ -106,6 +107,17 @@ def calendar(
         if not has_filters:
             list_schema = _list_calendars(exporter, formatter)
             formatter.print_result(list_schema)
+
+            # Print next-step hints (only for human output mode)
+            if get_output_mode() == OutputMode.HUMAN:
+                print_next_steps(
+                    formatter,
+                    [
+                        ("gwt calendar -a YYYY-MM-DD -b YYYY-MM-DD", "Export events in date range"),
+                        ("gwt calendar --calendar <ID>", "Export from specific calendar"),
+                        ("gwt calendar -q 'meeting'", "Search for events"),
+                    ],
+                )
             return
 
         # Parse dates
@@ -175,6 +187,28 @@ def calendar(
 
         # Print result
         formatter.print_result(export_schema)
+
+        # Print next-step hints (only for human output mode)
+        if get_output_mode() == OutputMode.HUMAN:
+            # Check if any Drive links were found in exported events
+            drive_links_found = sum(e.drive_links_found for e in events)
+            hints: list[tuple[str, str]] = []
+
+            if drive_links_found > 0:
+                hints.append(
+                    (
+                        f"gwt download <URL> -d {depth or 1}",
+                        f"Download {drive_links_found} linked Drive doc(s)",
+                    )
+                )
+
+            hints.extend(
+                [
+                    ("gwt mail -q 'from:...'", "Export related Gmail messages"),
+                    ("gwt download <URL>", "Download a specific document"),
+                ]
+            )
+            print_next_steps(formatter, hints)
 
     except Exception as e:
         logger.error(f"Failed: {e}")
@@ -268,6 +302,17 @@ def _export_single_event(
         )
 
         formatter.print_result(output_schema)
+
+        # Print next-step hints (only for human output mode)
+        if get_output_mode() == OutputMode.HUMAN:
+            print_next_steps(
+                formatter,
+                [
+                    ("gwt calendar -a YYYY-MM-DD", "Export more events"),
+                    ("gwt mail -q 'from:...'", "Export related Gmail messages"),
+                    ("gwt download <URL>", "Download a linked document"),
+                ],
+            )
     else:
         formatter.print_error("Failed to export event")
         raise typer.Exit(1)

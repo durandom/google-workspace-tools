@@ -14,6 +14,20 @@ from ...core.exporter import GoogleDriveExporter
 console = Console()
 
 
+def _print_next_steps_console(hints: list[tuple[str, str]]) -> None:
+    """Print next-step hints using console (credentials command uses console directly).
+
+    Args:
+        hints: List of (command, description) tuples
+    """
+    if not hints:
+        return
+
+    console.print("\n[dim]Next steps:[/dim]")
+    for cmd, desc in hints:
+        console.print(f"[dim]  {cmd:<40} {desc}[/dim]")
+
+
 def credentials(
     action: Annotated[
         str,
@@ -107,6 +121,15 @@ def _handle_login(credentials_file: Path, token_path: Path, use_keyring: bool) -
                 console.print(f"  Storage: [blue]file ({token_path})[/blue]")
         else:
             console.print("[green]Authentication successful![/green]")
+
+        # Print next-step hints
+        _print_next_steps_console(
+            [
+                ("gwt download <URL>", "Download a Google Drive document"),
+                ("gwt mail -q 'from:...'", "Export Gmail messages"),
+                ("gwt calendar", "List your calendars"),
+            ]
+        )
 
     except FileNotFoundError as e:
         console.print(f"[red]Error: {e}[/red]")
@@ -253,11 +276,12 @@ def _handle_import(credentials_file: Path) -> None:
 
 def _handle_status(credentials_file: Path, token_path: Path, use_keyring: bool) -> None:
     """Handle the status action."""
-    from ...core.storage import FileCredentialStorage, KeyringCredentialStorage
+    from ...core.storage import KeyringCredentialStorage
 
     console.print("[bold]Credential Status[/bold]\n")
 
     # Try to get current user info
+    logged_in = False
     try:
         config = GoogleDriveExporterConfig(
             credentials_path=credentials_file,
@@ -271,6 +295,7 @@ def _handle_status(credentials_file: Path, token_path: Path, use_keyring: bool) 
             console.print("  Logged in: [green]Yes[/green]")
             console.print(f"  User: [cyan]{user_info.get('displayName', 'Unknown')}[/cyan]")
             console.print(f"  Email: [cyan]{user_info.get('emailAddress', 'Unknown')}[/cyan]")
+            logged_in = True
         else:
             console.print("  Logged in: [yellow]Unknown[/yellow]")
     except Exception:
@@ -317,3 +342,19 @@ def _handle_status(credentials_file: Path, token_path: Path, use_keyring: bool) 
         console.print(f"  Credentials File: [green]exists[/green] ({credentials_file})")
     else:
         console.print("  Credentials File: [dim]not found[/dim]")
+
+    # Print next-step hints based on login status
+    if logged_in:
+        _print_next_steps_console(
+            [
+                ("gwt download <URL>", "Download a Google Drive document"),
+                ("gwt mail -q 'from:...'", "Export Gmail messages"),
+                ("gwt calendar", "List your calendars"),
+            ]
+        )
+    else:
+        _print_next_steps_console(
+            [
+                ("gwt credentials login", "Authenticate with Google"),
+            ]
+        )

@@ -66,6 +66,11 @@ def formats(
 
         console.print(table)
 
+        # Print next-step hints
+        console.print("\n[dim]Next steps:[/dim]")
+        console.print(f"[dim]  {'gwt download <URL> -f md':<40} Download as Markdown[/dim]")
+        console.print(f"[dim]  {'gwt download <URL> -f pdf':<40} Download as PDF[/dim]")
+
 
 def extract_id(
     url: Annotated[
