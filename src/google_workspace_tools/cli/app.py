@@ -8,8 +8,10 @@ from typing import Annotated
 
 import typer
 from rich.console import Console
+from rich.panel import Panel
 
 from .. import __version__
+from ..core.storage import get_credential_storage
 from ..settings import settings
 from .commands.calendar import calendar_app
 from .commands.credentials import credentials
@@ -21,11 +23,65 @@ from .output import OutputMode, set_output_mode
 
 console = Console()
 
+
+def _get_auth_status() -> tuple[bool, str | None]:
+    """Check authentication status without triggering OAuth flow.
+
+    Returns:
+        Tuple of (is_authenticated, email_or_None)
+    """
+    try:
+        storage = get_credential_storage(
+            use_keyring=settings.use_keyring,
+            service_name=settings.keyring_service_name,
+            token_path=settings.token_path,
+        )
+        creds = storage.load()
+        if creds and creds.token_data:
+            # Try to get email from stored credentials
+            email = creds.email or creds.token_data.get("email")
+            return True, email
+        return False, None
+    except Exception:
+        return False, None
+
+
+def _show_status() -> None:
+    """Display status and next steps when gwt is run without arguments."""
+    # Auth status
+    is_authed, email = _get_auth_status()
+    if is_authed:
+        auth_line = f"[green]✓[/green] Logged in" + (f" as [cyan]{email}[/cyan]" if email else "")
+    else:
+        auth_line = "[yellow]○[/yellow] Not authenticated"
+
+    # Build status content
+    status_lines = [
+        f"[bold blue]google-workspace-tools[/bold blue] v{__version__}",
+        "",
+        f"[bold]Authentication:[/bold] {auth_line}",
+        f"[bold]Default output:[/bold]  [dim]{settings.target_directory}[/dim]",
+    ]
+
+    # Next steps
+    next_steps = [
+        "",
+        "[bold]Next steps:[/bold]",
+        "  [cyan]gwt download <URL>[/cyan]       Export a Google Doc/Sheet/Slides",
+        '  [cyan]gwt mail -q "from:boss"[/cyan]  Export Gmail messages',
+        "  [cyan]gwt calendar list[/cyan]        List your calendars",
+        "  [cyan]gwt credentials[/cyan]          Manage authentication",
+        "  [cyan]gwt --help[/cyan]               Show all commands",
+    ]
+
+    console.print(Panel("\n".join(status_lines + next_steps), border_style="blue"))
+
 app = typer.Typer(
     name="gwt",
     help="Google Workspace Tools - Export and manage Google Drive documents",
     add_completion=True,
     rich_markup_mode="rich",
+    invoke_without_command=True,
 )
 
 
@@ -38,6 +94,7 @@ def version_callback(value: bool) -> None:
 
 @app.callback()
 def main_callback(
+    ctx: typer.Context,
     verbose: Annotated[
         int,
         typer.Option(
@@ -91,6 +148,10 @@ def main_callback(
             level=level,
             colorize=True,
         )
+
+    # Show status when no subcommand is invoked
+    if ctx.invoked_subcommand is None:
+        _show_status()
 
 
 # Register commands
