@@ -26,6 +26,7 @@ def mail(
     export_format: Annotated[str, typer.Option("--format", "-f", help="Export format (json, md)")] = "md",
     mode: Annotated[str, typer.Option("--mode", "-m", help="Export mode (thread, individual)")] = "thread",
     output: Annotated[Path, typer.Option("--output", "-o", help="Output directory")] = Path("exports/emails"),
+    stdout: Annotated[bool, typer.Option("--stdout", help="Output to stdout instead of files")] = False,
     depth: Annotated[int, typer.Option("--depth", "-d", help="Link following depth")] = 0,
     credentials: Annotated[Path, typer.Option("--credentials", "-c", help="Path to credentials file")] = Path(
         ".client_secret.googleusercontent.com.json"
@@ -36,6 +37,8 @@ def mail(
 
     Examples:
         gwt mail -q "from:boss@example.com" -f md
+
+        gwt mail -q "subject:weekly" --stdout
 
         gwt mail -a 2024-01-01 -l work,important
 
@@ -71,6 +74,20 @@ def mail(
         )
 
         exporter = GoogleDriveExporter(config)
+
+        # Handle stdout mode - output directly and exit
+        if stdout:
+            import sys
+
+            content = exporter.format_emails_as_string(
+                filters=filters,
+                export_format=export_format,
+                export_mode=cast(Literal["thread", "individual"], mode),
+            )
+            sys.stdout.write(content)
+            if content and not content.endswith("\n"):
+                sys.stdout.write("\n")
+            return
 
         # Progress messages
         formatter.print_progress("[bold]Exporting Gmail messages...[/bold]")

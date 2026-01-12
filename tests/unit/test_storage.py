@@ -14,6 +14,7 @@ from google_workspace_tools.core.storage import (
 )
 
 
+@pytest.mark.unit
 class TestStoredCredentials:
     """Tests for StoredCredentials dataclass."""
 
@@ -49,6 +50,7 @@ class TestStoredCredentials:
         assert creds.client_id is None
 
 
+@pytest.mark.unit
 class TestFileCredentialStorage:
     """Tests for file-based storage."""
 
@@ -128,6 +130,7 @@ class TestFileCredentialStorage:
         assert token_path.exists()
 
 
+@pytest.mark.unit
 class TestKeyringCredentialStorage:
     """Tests for keyring-based storage."""
 
@@ -228,6 +231,7 @@ class TestKeyringCredentialStorage:
         assert storage.service_name == "custom-service"
 
 
+@pytest.mark.unit
 class TestGetCredentialStorage:
     """Tests for storage factory function."""
 

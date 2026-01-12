@@ -114,9 +114,10 @@ quote-style = "double"
 addopts = "-v --tb=short --strict-markers"
 testpaths = ["tests"]
 markers = [
-    "unit: Unit tests",
-    "integration: Integration tests",
-    "e2e: End-to-end tests",
+    "unit: Pure unit tests with no external dependencies",
+    "integration: Tests that use mocked external services",
+    "e2e: End-to-end CLI tests",
+    "slow: Tests that take longer than 1 second",
 ]
 
 # Coverage

@@ -2,6 +2,7 @@
 
 from unittest.mock import MagicMock, patch
 
+import pytest
 from typer.testing import CliRunner
 
 from google_workspace_tools.cli.app import app
@@ -9,6 +10,7 @@ from google_workspace_tools.cli.app import app
 runner = CliRunner()
 
 
+@pytest.mark.e2e
 class TestCalendarHelp:
     """Tests for calendar help output."""
 
@@ -29,10 +31,11 @@ class TestCalendarHelp:
         assert "calendar" in result.stdout
 
 
+@pytest.mark.e2e
 class TestCalendarListDefault:
     """Tests for calendar command listing calendars when no filters."""
 
-    @patch("google_workspace_tools.core.exporter.GoogleDriveExporter")
+    @patch("google_workspace_tools.cli.commands.calendar.GoogleDriveExporter")
     def test_calendar_lists_when_no_filters(self, mock_exporter_class, tmp_path):
         """Test calendar command lists calendars when no filters provided."""
         mock_exporter = MagicMock()
@@ -60,7 +63,7 @@ class TestCalendarListDefault:
             assert "Calendar" in result.stdout
             assert "My Calendar" in result.stdout or "primary" in result.stdout.lower()
 
-    @patch("google_workspace_tools.core.exporter.GoogleDriveExporter")
+    @patch("google_workspace_tools.cli.commands.calendar.GoogleDriveExporter")
     def test_calendar_list_empty(self, mock_exporter_class, tmp_path):
         """Test calendar command with no calendars."""
         mock_exporter = MagicMock()
@@ -85,8 +88,14 @@ class TestCalendarListDefault:
         if result.exit_code == 0:
             assert "No calendars" in result.stdout or "0" in result.stdout
 
-    def test_calendar_list_error_handling(self):
-        """Test calendar list error handling with missing credentials."""
+    @patch("google_workspace_tools.cli.commands.calendar.GoogleDriveExporter")
+    def test_calendar_list_error_handling(self, mock_exporter_class):
+        """Test calendar list error handling with authentication failure."""
+        # Mock exporter to raise an error when listing calendars
+        mock_exporter = MagicMock()
+        mock_exporter.list_calendars.side_effect = Exception("Authentication failed")
+        mock_exporter_class.return_value = mock_exporter
+
         result = runner.invoke(
             app,
             [
@@ -100,7 +109,7 @@ class TestCalendarListDefault:
         assert result.exit_code == 1
         assert "Error" in result.stdout or "error" in result.stdout.lower()
 
-    @patch("google_workspace_tools.core.exporter.GoogleDriveExporter")
+    @patch("google_workspace_tools.cli.commands.calendar.GoogleDriveExporter")
     def test_calendar_list_table_formatting(self, mock_exporter_class, tmp_path):
         """Test calendar list table formatting."""
         mock_exporter = MagicMock()
@@ -132,10 +141,11 @@ class TestCalendarListDefault:
             assert "Personal Calendar" in result.stdout or "Work Calendar" in result.stdout
 
 
+@pytest.mark.e2e
 class TestCalendarExportCommand:
     """Tests for calendar command with export filters."""
 
-    @patch("google_workspace_tools.core.exporter.GoogleDriveExporter")
+    @patch("google_workspace_tools.cli.commands.calendar.GoogleDriveExporter")
     def test_calendar_with_time_range(self, mock_exporter_class, tmp_path):
         """Test calendar with time range filters."""
         mock_exporter = MagicMock()
@@ -161,7 +171,7 @@ class TestCalendarExportCommand:
 
         assert result.exit_code in [0, 1]
 
-    @patch("google_workspace_tools.core.exporter.GoogleDriveExporter")
+    @patch("google_workspace_tools.cli.commands.calendar.GoogleDriveExporter")
     def test_calendar_specific_calendar(self, mock_exporter_class, tmp_path):
         """Test calendar with specific calendar ID."""
         mock_exporter = MagicMock()
@@ -187,7 +197,7 @@ class TestCalendarExportCommand:
 
         assert result.exit_code in [0, 1]
 
-    @patch("google_workspace_tools.core.exporter.GoogleDriveExporter")
+    @patch("google_workspace_tools.cli.commands.calendar.GoogleDriveExporter")
     def test_calendar_with_query(self, mock_exporter_class, tmp_path):
         """Test calendar with search query."""
         mock_exporter = MagicMock()
@@ -211,7 +221,7 @@ class TestCalendarExportCommand:
 
         assert result.exit_code in [0, 1]
 
-    @patch("google_workspace_tools.core.exporter.GoogleDriveExporter")
+    @patch("google_workspace_tools.cli.commands.calendar.GoogleDriveExporter")
     def test_calendar_json_format(self, mock_exporter_class, tmp_path):
         """Test calendar with JSON format."""
         mock_exporter = MagicMock()
@@ -237,7 +247,7 @@ class TestCalendarExportCommand:
 
         assert result.exit_code in [0, 1]
 
-    @patch("google_workspace_tools.core.exporter.GoogleDriveExporter")
+    @patch("google_workspace_tools.cli.commands.calendar.GoogleDriveExporter")
     def test_calendar_with_link_following(self, mock_exporter_class, tmp_path):
         """Test calendar with link following enabled."""
         mock_exporter = MagicMock()
@@ -263,7 +273,7 @@ class TestCalendarExportCommand:
 
         assert result.exit_code in [0, 1]
 
-    @patch("google_workspace_tools.core.exporter.GoogleDriveExporter")
+    @patch("google_workspace_tools.cli.commands.calendar.GoogleDriveExporter")
     def test_calendar_max_results(self, mock_exporter_class, tmp_path):
         """Test calendar with max results limit."""
         mock_exporter = MagicMock()
@@ -289,8 +299,14 @@ class TestCalendarExportCommand:
 
         assert result.exit_code in [0, 1]
 
-    def test_calendar_export_error_handling(self):
-        """Test calendar export error handling with missing credentials."""
+    @patch("google_workspace_tools.cli.commands.calendar.GoogleDriveExporter")
+    def test_calendar_export_error_handling(self, mock_exporter_class):
+        """Test calendar export error handling with authentication failure."""
+        # Mock exporter to raise an error during export
+        mock_exporter = MagicMock()
+        mock_exporter.export_calendar_events.side_effect = Exception("Authentication failed")
+        mock_exporter_class.return_value = mock_exporter
+
         result = runner.invoke(
             app,
             [
@@ -306,7 +322,7 @@ class TestCalendarExportCommand:
         assert result.exit_code == 1
         assert "Error" in result.stdout or "error" in result.stdout.lower()
 
-    @patch("google_workspace_tools.core.exporter.GoogleDriveExporter")
+    @patch("google_workspace_tools.cli.commands.calendar.GoogleDriveExporter")
     def test_calendar_output_formatting(self, mock_exporter_class, tmp_path):
         """Test calendar output formatting."""
         mock_exporter = MagicMock()
@@ -337,10 +353,11 @@ class TestCalendarExportCommand:
             assert "exported" in result.stdout.lower() or "3" in result.stdout
 
 
+@pytest.mark.e2e
 class TestCalendarIntegration:
     """Integration tests for calendar commands with realistic scenarios."""
 
-    @patch("google_workspace_tools.core.exporter.GoogleDriveExporter")
+    @patch("google_workspace_tools.cli.commands.calendar.GoogleDriveExporter")
     def test_calendar_combined_filters(self, mock_exporter_class, tmp_path):
         """Test calendar with multiple combined filters."""
         mock_exporter = MagicMock()
@@ -378,7 +395,7 @@ class TestCalendarIntegration:
 
         assert result.exit_code in [0, 1]
 
-    @patch("google_workspace_tools.core.exporter.GoogleDriveExporter")
+    @patch("google_workspace_tools.cli.commands.calendar.GoogleDriveExporter")
     def test_workflow_list_then_export(self, mock_exporter_class, tmp_path):
         """Test realistic workflow: list calendars (no filters), then export with filters."""
         mock_exporter = MagicMock()

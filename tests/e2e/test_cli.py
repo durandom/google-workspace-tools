@@ -1,5 +1,7 @@
 """End-to-end tests for CLI commands."""
 
+from unittest.mock import MagicMock, patch
+
 import pytest
 from typer.testing import CliRunner
 
@@ -8,6 +10,7 @@ from google_workspace_tools.cli.app import app
 runner = CliRunner()
 
 
+@pytest.mark.e2e
 class TestCLIHelp:
     """Tests for CLI help output."""
 
@@ -51,6 +54,7 @@ class TestCLIHelp:
         assert "List supported export formats" in result.stdout
 
 
+@pytest.mark.e2e
 class TestVersionCommand:
     """Tests for version command."""
 
@@ -68,6 +72,7 @@ class TestVersionCommand:
         assert "google-workspace-tools" in result.stdout
 
 
+@pytest.mark.e2e
 class TestFormatsCommand:
     """Tests for formats command."""
 
@@ -101,6 +106,7 @@ class TestFormatsCommand:
         assert '"formats"' in result.stdout
 
 
+@pytest.mark.e2e
 class TestExtractIdCommand:
     """Tests for extract-id command."""
 
@@ -134,30 +140,42 @@ class TestExtractIdCommand:
         assert "Error" in result.stdout
 
 
+@pytest.mark.e2e
 class TestDownloadCommand:
     """Tests for download command (without actual API calls)."""
 
-    @pytest.mark.xfail(
-        reason="Test is not isolated: uses real keyring credentials instead of mock, making actual API calls"
-    )
-    def test_download_reports_errors(self, tmp_path):
-        """Test that download reports errors gracefully."""
+    @patch("google_workspace_tools.cli.commands.download.GoogleDriveExporter")
+    def test_download_reports_errors(self, mock_exporter_class, tmp_path):
+        """Test that download reports errors gracefully when export fails."""
+        # Setup mock exporter to return empty results (simulating export failure)
+        mock_exporter = MagicMock()
+        mock_exporter.export_document.return_value = {}  # Empty = no files exported
+        mock_exporter.export_multiple.return_value = {}
+        mock_exporter.extract_document_id.return_value = "abc123"
+        mock_exporter.detect_document_type.return_value = "document"
+        mock_exporter.get_document_metadata.return_value = {
+            "name": "Test Doc",
+            "mimeType": "application/vnd.google-apps.document",
+        }
+        mock_exporter_class.return_value = mock_exporter
+
         result = runner.invoke(
             app,
             [
                 "download",
                 "abc123",
                 "-c",
-                str(tmp_path / "nonexistent.json"),
+                str(tmp_path / "creds.json"),
                 "-o",
                 str(tmp_path / "output"),
             ],
         )
-        # The command completes but reports no documents exported
-        assert result.exit_code == 0
-        assert "No documents were exported" in result.stdout or "0 document" in result.stdout
+        # The command exits with error code when no documents are exported
+        assert result.exit_code == 1
+        assert "not exported" in result.stdout or "error" in result.stdout.lower()
 
 
+@pytest.mark.e2e
 class TestMirrorCommand:
     """Tests for mirror command."""
 

@@ -8,6 +8,7 @@ from google_workspace_tools.core.config import GoogleDriveExporterConfig
 from google_workspace_tools.core.exporter import GoogleDriveExporter
 
 
+@pytest.mark.integration
 class TestSpreadsheetMarkdownExport:
     """Tests for spreadsheet markdown export functionality."""
 
@@ -181,6 +182,7 @@ class TestSpreadsheetMarkdownExport:
             assert result is False
 
 
+@pytest.mark.unit
 class TestSpreadsheetExportModes:
     """Tests for different spreadsheet export modes."""
 

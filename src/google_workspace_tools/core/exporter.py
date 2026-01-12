@@ -1739,8 +1739,128 @@ class GoogleDriveExporter:
 
         return threads
 
+    def _format_email_thread_as_json(self, thread_id: str, messages: list[dict[str, Any]]) -> str:
+        """Format email thread as JSON string.
+
+        Args:
+            thread_id: Gmail thread ID
+            messages: List of messages in thread
+
+        Returns:
+            JSON string representation of the thread
+        """
+        # Extract Drive links from all messages
+        drive_links = []
+        for message in messages:
+            text = message.get("text_body", "") + message.get("html_body", "")
+            links = self._extract_links_from_text(text)
+            drive_links.extend(links)
+
+        # Get thread subject from first message
+        subject = messages[0].get("headers", {}).get("Subject", "(no subject)") if messages else "(no subject)"
+
+        thread_data = {
+            "thread_id": thread_id,
+            "subject": subject,
+            "message_count": len(messages),
+            "messages": messages,
+            "drive_links": list(set(drive_links)),  # Deduplicate
+            "exported_at": datetime.now(UTC).isoformat(),
+        }
+
+        return json.dumps(thread_data, indent=2, ensure_ascii=False)
+
+    def _format_email_thread_as_markdown(self, thread_id: str, messages: list[dict[str, Any]]) -> str:
+        """Format email thread as Markdown string with frontmatter.
+
+        Args:
+            thread_id: Gmail thread ID
+            messages: List of messages in thread
+
+        Returns:
+            Markdown string representation of the thread
+        """
+        subject = messages[0].get("headers", {}).get("Subject", "(no subject)") if messages else "(no subject)"
+
+        # Extract participants
+        participants = set()
+        labels = set()
+        for message in messages:
+            headers = message.get("headers", {})
+            if "From" in headers:
+                participants.add(headers["From"])
+            if "To" in headers:
+                participants.add(headers["To"])
+            labels.update(message.get("label_ids", []))
+
+        # Generate frontmatter
+        frontmatter_data = {
+            "thread_id": thread_id,
+            "subject": subject,
+            "participants": sorted(list(participants)),
+            "message_count": len(messages),
+            "labels": sorted(list(labels)),
+            "exported_at": datetime.now(UTC).isoformat(),
+        }
+
+        if self.config.frontmatter_fields:
+            frontmatter_data.update(self.config.frontmatter_fields)
+
+        yaml_content = yaml.dump(frontmatter_data, default_flow_style=False, allow_unicode=True, sort_keys=False)
+        md_content = f"---\n{yaml_content}---\n\n"
+
+        # Add thread title
+        md_content += f"# Email Thread: {subject}\n\n"
+
+        # Add each message
+        for i, message in enumerate(messages, 1):
+            headers = message.get("headers", {})
+            sender = headers.get("From", "(unknown)")
+            to = headers.get("To", "")
+            cc = headers.get("Cc", "")
+            date = headers.get("Date", "")
+            label_ids = message.get("label_ids", [])
+
+            md_content += f"## Message {i} ({date})\n\n"
+            md_content += f"**From:** {sender}\n\n"
+            if to:
+                md_content += f"**To:** {to}\n\n"
+            if cc:
+                md_content += f"**Cc:** {cc}\n\n"
+            if label_ids:
+                md_content += f"**Labels:** {', '.join(label_ids)}\n\n"
+
+            # Convert HTML to Markdown or use plain text
+            html_body = message.get("html_body", "")
+            text_body = message.get("text_body", "")
+
+            if html_body:
+                try:
+                    body_md = convert_to_markdown(html_body)
+                    md_content += body_md + "\n\n"
+                except Exception as e:
+                    logger.warning(f"Failed to convert HTML to Markdown: {e}, using plain text")
+                    md_content += text_body + "\n\n"
+            elif text_body:
+                md_content += text_body + "\n\n"
+            else:
+                md_content += "[No readable content found]\n\n"
+
+            # Add attachments
+            attachments = message.get("attachments", [])
+            if attachments:
+                md_content += "**Attachments:**\n\n"
+                for att in attachments:
+                    size_kb = att["size"] / 1024 if att.get("size") else 0
+                    md_content += f"- {att['filename']} ({size_kb:.1f} KB)\n"
+                md_content += "\n"
+
+            md_content += "---\n\n"
+
+        return md_content
+
     def _export_email_thread_as_json(self, thread_id: str, messages: list[dict[str, Any]], output_path: Path) -> bool:
-        """Export email thread as JSON.
+        """Export email thread as JSON file.
 
         Args:
             thread_id: Gmail thread ID
@@ -1751,28 +1871,10 @@ class GoogleDriveExporter:
             True if successful, False otherwise
         """
         try:
-            # Extract Drive links from all messages
-            drive_links = []
-            for message in messages:
-                text = message.get("text_body", "") + message.get("html_body", "")
-                links = self._extract_links_from_text(text)
-                drive_links.extend(links)
-
-            # Get thread subject from first message
-            subject = messages[0].get("headers", {}).get("Subject", "(no subject)") if messages else "(no subject)"
-
-            thread_data = {
-                "thread_id": thread_id,
-                "subject": subject,
-                "message_count": len(messages),
-                "messages": messages,
-                "drive_links": list(set(drive_links)),  # Deduplicate
-                "exported_at": datetime.now(UTC).isoformat(),
-            }
-
+            content = self._format_email_thread_as_json(thread_id, messages)
             output_path.parent.mkdir(parents=True, exist_ok=True)
             with open(output_path, "w", encoding="utf-8") as f:
-                json.dump(thread_data, f, indent=2, ensure_ascii=False)
+                f.write(content)
 
             logger.debug(f"Exported email thread to JSON: {output_path}")
             return True
@@ -1784,7 +1886,7 @@ class GoogleDriveExporter:
     def _export_email_thread_as_markdown(
         self, thread_id: str, messages: list[dict[str, Any]], output_path: Path
     ) -> bool:
-        """Export email thread as Markdown with frontmatter.
+        """Export email thread as Markdown file.
 
         Args:
             thread_id: Gmail thread ID
@@ -1795,86 +1897,10 @@ class GoogleDriveExporter:
             True if successful, False otherwise
         """
         try:
-            subject = messages[0].get("headers", {}).get("Subject", "(no subject)") if messages else "(no subject)"
-
-            # Extract participants
-            participants = set()
-            labels = set()
-            for message in messages:
-                headers = message.get("headers", {})
-                if "From" in headers:
-                    participants.add(headers["From"])
-                if "To" in headers:
-                    participants.add(headers["To"])
-                labels.update(message.get("label_ids", []))
-
-            # Generate frontmatter
-            frontmatter_data = {
-                "thread_id": thread_id,
-                "subject": subject,
-                "participants": sorted(list(participants)),
-                "message_count": len(messages),
-                "labels": sorted(list(labels)),
-                "exported_at": datetime.now(UTC).isoformat(),
-            }
-
-            if self.config.frontmatter_fields:
-                frontmatter_data.update(self.config.frontmatter_fields)
-
-            yaml_content = yaml.dump(frontmatter_data, default_flow_style=False, allow_unicode=True, sort_keys=False)
-            md_content = f"---\n{yaml_content}---\n\n"
-
-            # Add thread title
-            md_content += f"# Email Thread: {subject}\n\n"
-
-            # Add each message
-            for i, message in enumerate(messages, 1):
-                headers = message.get("headers", {})
-                sender = headers.get("From", "(unknown)")
-                to = headers.get("To", "")
-                cc = headers.get("Cc", "")
-                date = headers.get("Date", "")
-                label_ids = message.get("label_ids", [])
-
-                md_content += f"## Message {i} ({date})\n\n"
-                md_content += f"**From:** {sender}\n\n"
-                if to:
-                    md_content += f"**To:** {to}\n\n"
-                if cc:
-                    md_content += f"**Cc:** {cc}\n\n"
-                if label_ids:
-                    md_content += f"**Labels:** {', '.join(label_ids)}\n\n"
-
-                # Convert HTML to Markdown or use plain text
-                html_body = message.get("html_body", "")
-                text_body = message.get("text_body", "")
-
-                if html_body:
-                    try:
-                        body_md = convert_to_markdown(html_body)
-                        md_content += body_md + "\n\n"
-                    except Exception as e:
-                        logger.warning(f"Failed to convert HTML to Markdown: {e}, using plain text")
-                        md_content += text_body + "\n\n"
-                elif text_body:
-                    md_content += text_body + "\n\n"
-                else:
-                    md_content += "[No readable content found]\n\n"
-
-                # Add attachments
-                attachments = message.get("attachments", [])
-                if attachments:
-                    md_content += "**Attachments:**\n\n"
-                    for att in attachments:
-                        size_kb = att["size"] / 1024 if att.get("size") else 0
-                        md_content += f"- {att['filename']} ({size_kb:.1f} KB)\n"
-                    md_content += "\n"
-
-                md_content += "---\n\n"
-
+            content = self._format_email_thread_as_markdown(thread_id, messages)
             output_path.parent.mkdir(parents=True, exist_ok=True)
             with open(output_path, "w", encoding="utf-8") as f:
-                f.write(md_content)
+                f.write(content)
 
             logger.debug(f"Exported email thread to Markdown: {output_path}")
             return True
@@ -2011,6 +2037,76 @@ class GoogleDriveExporter:
                             logger.error(f"Failed to export linked document {doc_id}: {e}")
 
         return exported_files
+
+    def format_emails_as_string(
+        self,
+        filters: GmailSearchFilter | None = None,
+        export_format: str = "md",
+        export_mode: Literal["thread", "individual"] = "thread",
+    ) -> str:
+        """Format Gmail messages as a single concatenated string for stdout output.
+
+        Args:
+            filters: Search filters (default: last 100 messages)
+            export_format: Export format ('json' or 'md')
+            export_mode: 'thread' groups by conversation, 'individual' formats each message
+
+        Returns:
+            Concatenated string of all formatted email threads/messages
+        """
+        if filters is None:
+            filters = GmailSearchFilter()
+
+        if export_format not in self.EMAIL_EXPORT_FORMATS:
+            raise ValueError(f"Invalid export format: {export_format}. Must be 'json' or 'md'")
+
+        logger.info(f"Formatting Gmail messages (mode: {export_mode}, format: {export_format})")
+
+        # Fetch messages
+        messages_metadata = list(self._fetch_messages_paginated(filters))
+        if not messages_metadata:
+            logger.info("No messages found matching filters")
+            return ""
+
+        logger.info(f"Found {len(messages_metadata)} messages")
+
+        # Fetch full message content
+        messages = []
+        for msg_meta in messages_metadata:
+            try:
+                message = self._fetch_message_content(msg_meta["id"])
+                messages.append(message)
+            except Exception as e:
+                logger.error(f"Failed to fetch message {msg_meta['id']}: {e}")
+
+        output_parts: list[str] = []
+
+        if export_mode == "thread":
+            # Group by thread
+            threads = self._group_messages_by_thread(messages)
+            logger.info(f"Grouped messages into {len(threads)} threads")
+
+            for thread_id, thread_messages in threads.items():
+                if export_format == "json":
+                    output_parts.append(self._format_email_thread_as_json(thread_id, thread_messages))
+                else:  # md
+                    output_parts.append(self._format_email_thread_as_markdown(thread_id, thread_messages))
+
+        else:  # individual mode
+            for message in messages:
+                message_id = message.get("id", "unknown")
+                if export_format == "json":
+                    output_parts.append(self._format_email_thread_as_json(message_id, [message]))
+                else:  # md
+                    output_parts.append(self._format_email_thread_as_markdown(message_id, [message]))
+
+        # Join with separator based on format
+        if export_format == "json":
+            # JSON array of threads
+            return "[\n" + ",\n".join(output_parts) + "\n]"
+        else:
+            # Markdown with clear separation
+            return "\n\n".join(output_parts)
 
     # ===== Calendar Export Methods =====
 

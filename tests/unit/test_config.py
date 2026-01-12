@@ -8,6 +8,7 @@ from google_workspace_tools.core.config import GoogleDriveExporterConfig
 from google_workspace_tools.core.types import DocumentConfig, DocumentType, ExportFormat
 
 
+@pytest.mark.unit
 class TestGoogleDriveExporterConfig:
     """Tests for GoogleDriveExporterConfig."""
 
@@ -63,6 +64,7 @@ class TestGoogleDriveExporterConfig:
             GoogleDriveExporterConfig(link_depth=6)
 
 
+@pytest.mark.unit
 class TestDocumentType:
     """Tests for DocumentType enum."""
 
@@ -74,6 +76,7 @@ class TestDocumentType:
         assert DocumentType.UNKNOWN.value == "unknown"
 
 
+@pytest.mark.unit
 class TestExportFormat:
     """Tests for ExportFormat model."""
 
@@ -97,6 +100,7 @@ class TestExportFormat:
         assert fmt.description is None
 
 
+@pytest.mark.unit
 class TestDocumentConfig:
     """Tests for DocumentConfig dataclass."""
 

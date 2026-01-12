@@ -7,11 +7,11 @@ from datetime import datetime
 import pytest
 from pydantic import ValidationError
 
-from google_workspace_tools.core.config import GoogleDriveExporterConfig
 from google_workspace_tools.core.exporter import GoogleDriveExporter
 from google_workspace_tools.core.filters import GmailSearchFilter
 
 
+@pytest.mark.unit
 class TestGmailSearchFilter:
     """Tests for Gmail search filter query building."""
 
@@ -85,6 +85,7 @@ class TestGmailSearchFilter:
         assert filter_obj.include_spam_trash is False
 
 
+@pytest.mark.unit
 class TestEmailExportFormats:
     """Tests for email export format definitions."""
 
@@ -110,13 +111,14 @@ class TestEmailExportFormats:
         assert formats["md"].mime_type == "text/markdown"
 
 
+@pytest.mark.unit
 class TestExtractMessageBody:
     """Tests for email body extraction."""
 
     @pytest.fixture
-    def exporter(self):
-        """Create an exporter instance."""
-        return GoogleDriveExporter()
+    def exporter(self, exporter_factory):
+        """Create an exporter instance using shared factory."""
+        return exporter_factory()
 
     def test_extract_simple_text_body(self, exporter):
         """Test extracting simple text/plain body."""
@@ -190,13 +192,14 @@ class TestExtractMessageBody:
         assert html_body == ""
 
 
+@pytest.mark.unit
 class TestExtractEmailAttachments:
     """Tests for email attachment extraction."""
 
     @pytest.fixture
-    def exporter(self):
-        """Create an exporter instance."""
-        return GoogleDriveExporter()
+    def exporter(self, exporter_factory):
+        """Create an exporter instance using shared factory."""
+        return exporter_factory()
 
     def test_extract_single_attachment(self, exporter):
         """Test extracting single attachment metadata."""
@@ -270,13 +273,14 @@ class TestExtractEmailAttachments:
         assert attachments[0]["filename"] == "nested.doc"
 
 
+@pytest.mark.unit
 class TestGroupMessagesByThread:
     """Tests for thread grouping logic."""
 
     @pytest.fixture
-    def exporter(self):
-        """Create an exporter instance."""
-        return GoogleDriveExporter()
+    def exporter(self, exporter_factory):
+        """Create an exporter instance using shared factory."""
+        return exporter_factory()
 
     def test_group_single_thread(self, exporter):
         """Test grouping messages in a single thread."""
@@ -325,13 +329,14 @@ class TestGroupMessagesByThread:
         assert "msg2" in threads
 
 
+@pytest.mark.unit
 class TestExportEmailThreadAsJSON:
     """Tests for JSON email export."""
 
     @pytest.fixture
-    def exporter(self):
-        """Create an exporter instance."""
-        return GoogleDriveExporter()
+    def exporter(self, exporter_factory):
+        """Create an exporter instance using shared factory."""
+        return exporter_factory()
 
     def test_export_thread_json(self, exporter, tmp_path):
         """Test exporting thread as JSON."""
@@ -390,14 +395,14 @@ class TestExportEmailThreadAsJSON:
             assert data["message_count"] == 2
 
 
+@pytest.mark.unit
 class TestExportEmailThreadAsMarkdown:
     """Tests for Markdown email export."""
 
     @pytest.fixture
-    def exporter(self):
-        """Create an exporter instance."""
-        config = GoogleDriveExporterConfig(enable_frontmatter=True)
-        return GoogleDriveExporter(config)
+    def exporter(self, exporter_factory):
+        """Create an exporter instance with frontmatter enabled."""
+        return exporter_factory(enable_frontmatter=True)
 
     def test_export_thread_markdown(self, exporter, tmp_path):
         """Test exporting thread as Markdown."""
@@ -479,3 +484,72 @@ class TestExportEmailThreadAsMarkdown:
         assert "image.png" in content
         assert "10.0 KB" in content  # Size formatting
         assert "5.0 KB" in content
+
+
+@pytest.mark.unit
+class TestFormatEmailThreadAsMarkdown:
+    """Tests for the pure markdown formatter method."""
+
+    @pytest.fixture
+    def exporter(self, exporter_factory):
+        """Create exporter instance for testing using shared factory."""
+        return exporter_factory()
+
+    def test_format_returns_string(self, exporter):
+        """Test that formatter returns a string, not writes a file."""
+        messages = [
+            {
+                "id": "msg1",
+                "headers": {"Subject": "Test Subject", "From": "sender@test.com", "Date": "2024-01-01"},
+                "text_body": "Hello World",
+                "html_body": "",
+                "label_ids": ["INBOX"],
+            }
+        ]
+
+        result = exporter._format_email_thread_as_markdown("thread123", messages)
+
+        assert isinstance(result, str)
+        assert "# Email Thread: Test Subject" in result
+        assert "Hello World" in result
+        assert "sender@test.com" in result
+
+    def test_format_includes_frontmatter(self, exporter):
+        """Test that formatted output includes YAML frontmatter."""
+        messages = [
+            {"id": "msg1", "headers": {"Subject": "Test"}, "text_body": "Body", "html_body": "", "label_ids": []}
+        ]
+
+        result = exporter._format_email_thread_as_markdown("thread123", messages)
+
+        assert result.startswith("---\n")
+        assert "thread_id: thread123" in result
+
+
+@pytest.mark.unit
+class TestFormatEmailThreadAsJson:
+    """Tests for the pure JSON formatter method."""
+
+    @pytest.fixture
+    def exporter(self, exporter_factory):
+        """Create exporter instance for testing using shared factory."""
+        return exporter_factory()
+
+    def test_format_returns_valid_json(self, exporter):
+        """Test that formatter returns valid JSON string."""
+        messages = [
+            {
+                "id": "msg1",
+                "headers": {"Subject": "Test Subject"},
+                "text_body": "Hello World",
+                "html_body": "",
+            }
+        ]
+
+        result = exporter._format_email_thread_as_json("thread123", messages)
+
+        # Should be valid JSON
+        parsed = json.loads(result)
+        assert parsed["thread_id"] == "thread123"
+        assert parsed["subject"] == "Test Subject"
+        assert parsed["message_count"] == 1

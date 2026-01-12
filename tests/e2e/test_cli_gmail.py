@@ -2,6 +2,7 @@
 
 from unittest.mock import MagicMock, patch
 
+import pytest
 from typer.testing import CliRunner
 
 from google_workspace_tools.cli.app import app
@@ -9,6 +10,7 @@ from google_workspace_tools.cli.app import app
 runner = CliRunner()
 
 
+@pytest.mark.e2e
 class TestMailHelp:
     """Tests for mail help output."""
 
@@ -28,10 +30,11 @@ class TestMailHelp:
         assert "mail" in result.stdout
 
 
+@pytest.mark.e2e
 class TestMailCommand:
     """Tests for mail command execution."""
 
-    @patch("google_workspace_tools.core.exporter.GoogleDriveExporter")
+    @patch("google_workspace_tools.cli.commands.mail.GoogleDriveExporter")
     def test_mail_with_defaults(self, mock_exporter_class, tmp_path):
         """Test mail with default parameters."""
         # Mock the exporter instance
@@ -55,7 +58,7 @@ class TestMailCommand:
         # Should complete (may not export anything without valid auth, but shouldn't crash)
         assert result.exit_code in [0, 1]  # May exit with error if auth fails
 
-    @patch("google_workspace_tools.core.exporter.GoogleDriveExporter")
+    @patch("google_workspace_tools.cli.commands.mail.GoogleDriveExporter")
     def test_mail_with_query(self, mock_exporter_class, tmp_path):
         """Test mail with search query."""
         mock_exporter = MagicMock()
@@ -84,7 +87,7 @@ class TestMailCommand:
 
         assert result.exit_code in [0, 1]
 
-    @patch("google_workspace_tools.core.exporter.GoogleDriveExporter")
+    @patch("google_workspace_tools.cli.commands.mail.GoogleDriveExporter")
     def test_mail_with_date_range(self, mock_exporter_class, tmp_path):
         """Test mail with date range filters."""
         mock_exporter = MagicMock()
@@ -110,7 +113,7 @@ class TestMailCommand:
 
         assert result.exit_code in [0, 1]
 
-    @patch("google_workspace_tools.core.exporter.GoogleDriveExporter")
+    @patch("google_workspace_tools.cli.commands.mail.GoogleDriveExporter")
     def test_mail_with_labels(self, mock_exporter_class, tmp_path):
         """Test mail with label filters."""
         mock_exporter = MagicMock()
@@ -134,7 +137,7 @@ class TestMailCommand:
 
         assert result.exit_code in [0, 1]
 
-    @patch("google_workspace_tools.core.exporter.GoogleDriveExporter")
+    @patch("google_workspace_tools.cli.commands.mail.GoogleDriveExporter")
     def test_mail_json_format(self, mock_exporter_class, tmp_path):
         """Test mail with JSON format."""
         mock_exporter = MagicMock()
@@ -158,7 +161,7 @@ class TestMailCommand:
 
         assert result.exit_code in [0, 1]
 
-    @patch("google_workspace_tools.core.exporter.GoogleDriveExporter")
+    @patch("google_workspace_tools.cli.commands.mail.GoogleDriveExporter")
     def test_mail_individual_mode(self, mock_exporter_class, tmp_path):
         """Test mail with individual message mode."""
         mock_exporter = MagicMock()
@@ -182,7 +185,7 @@ class TestMailCommand:
 
         assert result.exit_code in [0, 1]
 
-    @patch("google_workspace_tools.core.exporter.GoogleDriveExporter")
+    @patch("google_workspace_tools.cli.commands.mail.GoogleDriveExporter")
     def test_mail_with_link_following(self, mock_exporter_class, tmp_path):
         """Test mail with link following enabled."""
         mock_exporter = MagicMock()
@@ -206,7 +209,7 @@ class TestMailCommand:
 
         assert result.exit_code in [0, 1]
 
-    @patch("google_workspace_tools.core.exporter.GoogleDriveExporter")
+    @patch("google_workspace_tools.cli.commands.mail.GoogleDriveExporter")
     def test_mail_max_results(self, mock_exporter_class, tmp_path):
         """Test mail with max results limit."""
         mock_exporter = MagicMock()
@@ -230,8 +233,14 @@ class TestMailCommand:
 
         assert result.exit_code in [0, 1]
 
-    def test_mail_error_handling(self):
-        """Test mail error handling with missing credentials."""
+    @patch("google_workspace_tools.cli.commands.mail.GoogleDriveExporter")
+    def test_mail_error_handling(self, mock_exporter_class):
+        """Test mail error handling with authentication failure."""
+        # Mock exporter to raise an error during initialization or export
+        mock_exporter = MagicMock()
+        mock_exporter.export_emails.side_effect = Exception("Authentication failed")
+        mock_exporter_class.return_value = mock_exporter
+
         result = runner.invoke(
             app,
             [
@@ -245,7 +254,7 @@ class TestMailCommand:
         assert result.exit_code == 1
         assert "Error" in result.stdout or "error" in result.stdout.lower()
 
-    @patch("google_workspace_tools.core.exporter.GoogleDriveExporter")
+    @patch("google_workspace_tools.cli.commands.mail.GoogleDriveExporter")
     def test_mail_output_formatting(self, mock_exporter_class, tmp_path):
         """Test mail output formatting."""
         mock_exporter = MagicMock()
@@ -273,10 +282,11 @@ class TestMailCommand:
             assert "exported" in result.stdout.lower() or "2" in result.stdout
 
 
+@pytest.mark.e2e
 class TestMailIntegration:
     """Integration tests for mail command with realistic scenarios."""
 
-    @patch("google_workspace_tools.core.exporter.GoogleDriveExporter")
+    @patch("google_workspace_tools.cli.commands.mail.GoogleDriveExporter")
     def test_mail_combined_filters(self, mock_exporter_class, tmp_path):
         """Test mail with multiple combined filters."""
         mock_exporter = MagicMock()
@@ -313,3 +323,65 @@ class TestMailIntegration:
             )
 
         assert result.exit_code in [0, 1]
+
+
+@pytest.mark.e2e
+class TestMailStdout:
+    """Tests for mail command stdout output mode."""
+
+    def test_mail_help_shows_stdout_option(self):
+        """Test that --stdout option appears in help."""
+        result = runner.invoke(app, ["mail", "--help"])
+        assert result.exit_code == 0
+        assert "--stdout" in result.stdout
+
+    @patch("google_workspace_tools.cli.commands.mail.GoogleDriveExporter")
+    def test_mail_stdout_outputs_to_terminal(self, mock_exporter_class, tmp_path):
+        """Test that --stdout mode outputs content to terminal instead of files."""
+        mock_exporter = MagicMock()
+        mock_exporter.format_emails_as_string.return_value = "# Email Thread: Test\n\nHello World"
+        mock_exporter_class.return_value = mock_exporter
+
+        result = runner.invoke(
+            app,
+            [
+                "mail",
+                "--stdout",
+                "-c",
+                str(tmp_path / "creds.json"),
+            ],
+        )
+
+        assert result.exit_code == 0
+        # Content should be in stdout
+        assert "# Email Thread: Test" in result.stdout
+        assert "Hello World" in result.stdout
+        # format_emails_as_string should have been called
+        mock_exporter.format_emails_as_string.assert_called_once()
+        # export_emails should NOT have been called (no file output)
+        mock_exporter.export_emails.assert_not_called()
+
+    @patch("google_workspace_tools.cli.commands.mail.GoogleDriveExporter")
+    def test_mail_stdout_with_json_format(self, mock_exporter_class, tmp_path):
+        """Test --stdout with JSON format."""
+        mock_exporter = MagicMock()
+        mock_exporter.format_emails_as_string.return_value = '[{"thread_id": "123"}]'
+        mock_exporter_class.return_value = mock_exporter
+
+        result = runner.invoke(
+            app,
+            [
+                "mail",
+                "--stdout",
+                "-f",
+                "json",
+                "-c",
+                str(tmp_path / "creds.json"),
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert '"thread_id": "123"' in result.stdout
+        # Verify json format was passed
+        call_kwargs = mock_exporter.format_emails_as_string.call_args[1]
+        assert call_kwargs["export_format"] == "json"

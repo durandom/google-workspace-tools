@@ -6,11 +6,11 @@ from datetime import datetime
 import pytest
 from pydantic import ValidationError
 
-from google_workspace_tools.core.config import GoogleDriveExporterConfig
 from google_workspace_tools.core.exporter import GoogleDriveExporter
 from google_workspace_tools.core.filters import CalendarEventFilter
 
 
+@pytest.mark.unit
 class TestCalendarEventFilter:
     """Tests for Calendar event filter configuration."""
 
@@ -89,6 +89,7 @@ class TestCalendarEventFilter:
         assert filter_obj.single_events is True
 
 
+@pytest.mark.unit
 class TestCalendarExportFormats:
     """Tests for calendar export format definitions."""
 
@@ -114,13 +115,14 @@ class TestCalendarExportFormats:
         assert formats["md"].mime_type == "text/markdown"
 
 
+@pytest.mark.unit
 class TestExportCalendarEventAsJSON:
     """Tests for JSON calendar event export."""
 
     @pytest.fixture
-    def exporter(self):
-        """Create an exporter instance."""
-        return GoogleDriveExporter()
+    def exporter(self, exporter_factory):
+        """Create an exporter instance using shared factory."""
+        return exporter_factory()
 
     def test_export_simple_event_json(self, exporter, tmp_path):
         """Test exporting simple calendar event as JSON."""
@@ -182,14 +184,14 @@ class TestExportCalendarEventAsJSON:
             assert isinstance(data["drive_links"], list)
 
 
+@pytest.mark.unit
 class TestExportCalendarEventAsMarkdown:
     """Tests for Markdown calendar event export."""
 
     @pytest.fixture
-    def exporter(self):
+    def exporter(self, exporter_factory):
         """Create an exporter instance with frontmatter enabled."""
-        config = GoogleDriveExporterConfig(enable_frontmatter=True)
-        return GoogleDriveExporter(config)
+        return exporter_factory(enable_frontmatter=True)
 
     def test_export_simple_event_markdown(self, exporter, tmp_path):
         """Test exporting simple event as Markdown."""
@@ -362,13 +364,14 @@ class TestExportCalendarEventAsMarkdown:
         assert "**Where:**" not in content or "Where: None" not in content
 
 
+@pytest.mark.unit
 class TestCalendarTimezoneHandling:
     """Tests for calendar timezone and date format handling."""
 
     @pytest.fixture
-    def exporter(self):
-        """Create an exporter instance."""
-        return GoogleDriveExporter()
+    def exporter(self, exporter_factory):
+        """Create an exporter instance using shared factory."""
+        return exporter_factory()
 
     def test_datetime_with_timezone(self, exporter, tmp_path):
         """Test handling dateTime with timezone."""

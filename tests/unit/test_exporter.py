@@ -7,6 +7,7 @@ from google_workspace_tools.core.exporter import GoogleDriveExporter
 from google_workspace_tools.core.types import DocumentType
 
 
+@pytest.mark.unit
 class TestExtractDocumentId:
     """Tests for document ID extraction from URLs."""
 
@@ -51,6 +52,7 @@ class TestExtractDocumentId:
             exporter.extract_document_id("https://example.com/not-a-drive-url")
 
 
+@pytest.mark.unit
 class TestDetectDocumentType:
     """Tests for document type detection."""
 
@@ -85,6 +87,7 @@ class TestDetectDocumentType:
         assert exporter.detect_document_type(url) == DocumentType.UNKNOWN
 
 
+@pytest.mark.unit
 class TestExportFormats:
     """Tests for export format dictionaries."""
 
@@ -126,6 +129,7 @@ class TestExportFormats:
         assert "md" not in formats
 
 
+@pytest.mark.unit
 class TestResetProcessedDocs:
     """Tests for reset_processed_docs method."""
 
@@ -143,6 +147,7 @@ class TestResetProcessedDocs:
         assert len(exporter._processed_docs) == 0
 
 
+@pytest.mark.unit
 class TestFrontmatter:
     """Tests for frontmatter generation."""
 
