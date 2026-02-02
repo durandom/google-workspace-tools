@@ -72,9 +72,7 @@ def calendar_list(
     credentials: Annotated[
         Path, typer.Option("--credentials", "-c", help="Path to credentials file")
     ] = DEFAULT_CREDENTIALS,
-    token: Annotated[
-        Path, typer.Option("--token", "-t", help="Path to token file")
-    ] = DEFAULT_TOKEN,
+    token: Annotated[Path, typer.Option("--token", "-t", help="Path to token file")] = DEFAULT_TOKEN,
 ) -> None:
     """List all accessible Google Calendars.
 
@@ -124,27 +122,15 @@ def calendar_list(
 
 @calendar_app.command(name="get")
 def calendar_get(
-    event_id: Annotated[
-        str, typer.Option("--event-id", "-e", help="Event ID to fetch")
-    ],
-    calendar_id: Annotated[
-        str, typer.Option("--calendar", help="Calendar ID")
-    ] = "primary",
-    export_format: Annotated[
-        str, typer.Option("--format", "-f", help="Export format (json, md)")
-    ] = "md",
-    output: Annotated[
-        Path | None, typer.Option("--output", "-o", help="Output directory (default: stdout)")
-    ] = None,
-    depth: Annotated[
-        int, typer.Option("--depth", "-d", help="Link following depth")
-    ] = 0,
+    event_id: Annotated[str, typer.Option("--event-id", "-e", help="Event ID to fetch")],
+    calendar_id: Annotated[str, typer.Option("--calendar", help="Calendar ID")] = "primary",
+    export_format: Annotated[str, typer.Option("--format", "-f", help="Export format (json, md)")] = "md",
+    output: Annotated[Path | None, typer.Option("--output", "-o", help="Output directory (default: stdout)")] = None,
+    depth: Annotated[int, typer.Option("--depth", "-d", help="Link following depth")] = 0,
     credentials: Annotated[
         Path, typer.Option("--credentials", "-c", help="Path to credentials file")
     ] = DEFAULT_CREDENTIALS,
-    token: Annotated[
-        Path, typer.Option("--token", "-t", help="Path to token file")
-    ] = DEFAULT_TOKEN,
+    token: Annotated[Path, typer.Option("--token", "-t", help="Path to token file")] = DEFAULT_TOKEN,
 ) -> None:
     """Fetch and export a single calendar event by ID.
 
@@ -246,36 +232,18 @@ def calendar_get(
 
 @calendar_app.command(name="export")
 def calendar_export(
-    calendar_id: Annotated[
-        str, typer.Option("--calendar", help="Calendar ID")
-    ] = "primary",
-    after: Annotated[
-        str | None, typer.Option("--after", "-a", help="After date (YYYY-MM-DD)")
-    ] = None,
-    before: Annotated[
-        str | None, typer.Option("--before", "-b", help="Before date (YYYY-MM-DD)")
-    ] = None,
-    query: Annotated[
-        str, typer.Option("--query", "-q", help="Search query")
-    ] = "",
-    max_results: Annotated[
-        int, typer.Option("--max", "-n", help="Maximum events to fetch")
-    ] = 250,
-    export_format: Annotated[
-        str, typer.Option("--format", "-f", help="Export format (json, md)")
-    ] = "md",
-    output: Annotated[
-        Path | None, typer.Option("--output", "-o", help="Output directory (default: stdout)")
-    ] = None,
-    depth: Annotated[
-        int, typer.Option("--depth", "-d", help="Link following depth")
-    ] = 0,
+    calendar_id: Annotated[str, typer.Option("--calendar", help="Calendar ID")] = "primary",
+    after: Annotated[str | None, typer.Option("--after", "-a", help="After date (YYYY-MM-DD)")] = None,
+    before: Annotated[str | None, typer.Option("--before", "-b", help="Before date (YYYY-MM-DD)")] = None,
+    query: Annotated[str, typer.Option("--query", "-q", help="Search query")] = "",
+    max_results: Annotated[int, typer.Option("--max", "-n", help="Maximum events to fetch")] = 250,
+    export_format: Annotated[str, typer.Option("--format", "-f", help="Export format (json, md)")] = "md",
+    output: Annotated[Path | None, typer.Option("--output", "-o", help="Output directory (default: stdout)")] = None,
+    depth: Annotated[int, typer.Option("--depth", "-d", help="Link following depth")] = 0,
     credentials: Annotated[
         Path, typer.Option("--credentials", "-c", help="Path to credentials file")
     ] = DEFAULT_CREDENTIALS,
-    token: Annotated[
-        Path, typer.Option("--token", "-t", help="Path to token file")
-    ] = DEFAULT_TOKEN,
+    token: Annotated[Path, typer.Option("--token", "-t", help="Path to token file")] = DEFAULT_TOKEN,
 ) -> None:
     """Export Google Calendar events with optional filters.
 

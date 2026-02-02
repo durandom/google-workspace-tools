@@ -35,6 +35,8 @@ def _get_auth_status() -> tuple[bool, str | None]:
             use_keyring=settings.use_keyring,
             service_name=settings.keyring_service_name,
             token_path=settings.token_path,
+            storage_backend=settings.storage_backend,
+            onepassword_vault=settings.onepassword_vault,
         )
         creds = storage.load()
         if creds and creds.token_data:
@@ -51,7 +53,7 @@ def _show_status() -> None:
     # Auth status
     is_authed, email = _get_auth_status()
     if is_authed:
-        auth_line = f"[green]✓[/green] Logged in" + (f" as [cyan]{email}[/cyan]" if email else "")
+        auth_line = "[green]✓[/green] Logged in" + (f" as [cyan]{email}[/cyan]" if email else "")
     else:
         auth_line = "[yellow]○[/yellow] Not authenticated"
 
@@ -75,6 +77,7 @@ def _show_status() -> None:
     ]
 
     console.print(Panel("\n".join(status_lines + next_steps), border_style="blue"))
+
 
 app = typer.Typer(
     name="gwt",

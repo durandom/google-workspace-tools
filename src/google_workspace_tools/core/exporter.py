@@ -5,6 +5,8 @@ import csv
 import io
 import json
 import re
+import webbrowser
+import wsgiref.simple_server
 from collections.abc import Generator
 from datetime import UTC, datetime
 from pathlib import Path
@@ -25,6 +27,71 @@ from .config import GoogleDriveExporterConfig
 from .filters import CalendarEventFilter, GmailSearchFilter
 from .storage import CredentialStorage, StoredCredentials, get_credential_storage
 from .types import DocumentConfig, DocumentType, ExportFormat
+
+
+class _RedirectWSGIApp:
+    """WSGI app to handle OAuth redirect callback."""
+
+    def __init__(self, success_message: str = "Authentication complete. You may close this window."):
+        self.last_request_uri: str = ""
+        self._success_message = success_message
+
+    def __call__(self, environ: dict, start_response: Any) -> list[bytes]:
+        """Handle the OAuth callback request."""
+        from wsgiref.util import request_uri
+
+        self.last_request_uri = request_uri(environ)
+        start_response("200 OK", [("Content-Type", "text/html; charset=utf-8")])
+        return [f"<html><body><h1>{self._success_message}</h1></body></html>".encode()]
+
+
+def _run_local_server_with_redirect_uri(
+    flow: InstalledAppFlow,
+    redirect_uri: str,
+    host: str = "localhost",
+    port: int = 8080,
+    open_browser: bool = True,
+    **kwargs: Any,
+) -> Credentials:
+    """Run OAuth flow with a custom redirect_uri.
+
+    This is a custom implementation of InstalledAppFlow.run_local_server()
+    that allows specifying the full redirect_uri (including path).
+
+    Args:
+        flow: The OAuth flow instance
+        redirect_uri: Full redirect URI (e.g., http://localhost:3000/oauth2callback)
+        host: Hostname for the local server
+        port: Port for the local server
+        open_browser: Whether to automatically open the browser
+        **kwargs: Additional args passed to authorization_url()
+
+    Returns:
+        OAuth2 credentials
+    """
+    wsgi_app = _RedirectWSGIApp()
+    wsgiref.simple_server.WSGIServer.allow_reuse_address = False
+    local_server = wsgiref.simple_server.make_server(host, port, wsgi_app)
+
+    try:
+        # Set the full redirect_uri (this is the key difference from run_local_server)
+        flow.redirect_uri = redirect_uri
+        auth_url, _ = flow.authorization_url(**kwargs)
+
+        if open_browser:
+            webbrowser.open(auth_url, new=1, autoraise=True)
+
+        print(f"Please visit this URL to authorize this application: {auth_url}")
+
+        local_server.handle_request()
+
+        # Exchange the authorization code for tokens
+        authorization_response = wsgi_app.last_request_uri.replace("http", "https")
+        flow.fetch_token(authorization_response=authorization_response)
+    finally:
+        local_server.server_close()
+
+    return flow.credentials
 
 
 class GoogleDriveExporter:
@@ -164,6 +231,8 @@ class GoogleDriveExporter:
             service_name=self.config.keyring_service_name,
             token_path=self.config.token_path,
             credentials_path=self.config.credentials_path,
+            storage_backend=self.config.storage_backend,
+            onepassword_vault=self.config.onepassword_vault,
         )
 
         creds = None
@@ -207,17 +276,32 @@ class GoogleDriveExporter:
                 if "installed" in client_creds_data:
                     raise ValueError(
                         "Wrong kind of credentials file found (Desktop instead of Web application).\n"
-                        "Please create Web application credentials with authorized redirect URI:\n"
-                        "http://localhost:47621/\n\n"
+                        "Please create Web application credentials with authorized redirect URIs.\n\n"
                         "https://console.cloud.google.com/apis/credentials"
                     )
 
                 logger.info("Running OAuth flow for new credentials")
                 flow = InstalledAppFlow.from_client_config(client_creds_data, self.config.scopes)
 
+                # Extract redirect URI from client credentials
+                web_config = client_creds_data.get("web", {})
+                redirect_uris = web_config.get("redirect_uris", [])
+
+                # Parse first redirect URI to get port
+                port = 8080  # default
+                redirect_uri = f"http://localhost:{port}/"
+                if redirect_uris:
+                    redirect_uri = redirect_uris[0]
+                    parsed = urlparse(redirect_uri)
+                    port = parsed.port or 8080
+                    logger.debug(f"Using redirect URI: {redirect_uri} (port={port})")
+
                 # Force consent to ensure we get a refresh_token
-                creds = flow.run_local_server(
-                    port=47621,
+                # Use custom helper that supports full redirect_uri with path
+                creds = _run_local_server_with_redirect_uri(
+                    flow,
+                    redirect_uri=redirect_uri,
+                    port=port,
                     prompt="consent",
                     access_type="offline",
                 )
@@ -285,9 +369,9 @@ class GoogleDriveExporter:
             return None
 
     def _get_client_credentials(self, storage: CredentialStorage) -> dict[str, Any] | None:
-        """Get OAuth client credentials from keyring or file.
+        """Get OAuth client credentials from storage backend or file.
 
-        Tries keyring first (if available), then falls back to file.
+        Tries secure storage first (1Password/keyring), then falls back to file.
 
         Args:
             storage: The credential storage backend
@@ -295,9 +379,16 @@ class GoogleDriveExporter:
         Returns:
             Client credentials dict or None if not found
         """
-        from .storage import KeyringCredentialStorage
+        from .storage import KeyringCredentialStorage, OnePasswordCredentialStorage
 
-        # Try keyring first if storage is keyring-based
+        # Try 1Password first if storage is 1Password-based
+        if isinstance(storage, OnePasswordCredentialStorage):
+            client_creds = storage.load_client_credentials()
+            if client_creds:
+                logger.debug("Loaded client credentials from 1Password")
+                return client_creds
+
+        # Try keyring if storage is keyring-based
         if isinstance(storage, KeyringCredentialStorage):
             client_creds = storage.load_client_credentials()
             if client_creds:
@@ -1397,6 +1488,9 @@ class GoogleDriveExporter:
                 if format_key not in self.SPREADSHEET_EXPORT_FORMATS:
                     logger.warning(f"Format {format_key} not supported for spreadsheets, skipping")
                     continue
+                # Skip single-format CSV export for spreadsheets - handled by export_all_sheets_as_csv
+                if format_key == "csv":
+                    continue
                 export_format = self.SPREADSHEET_EXPORT_FORMATS[format_key]
             elif doc_type == DocumentType.PRESENTATION:
                 if format_key not in self.PRESENTATION_EXPORT_FORMATS:
@@ -1452,8 +1546,12 @@ class GoogleDriveExporter:
                     self.export_all_sheets_as_csv(document_id, self.config.target_directory, safe_title)
             else:
                 # For non-markdown formats, also export CSV sheets if format is csv or all
-                if "csv" in formats_to_export or self.config.export_format == "all":
-                    self.export_all_sheets_as_csv(document_id, self.config.target_directory, safe_title)
+                should_export_csv = "csv" in formats_to_export or self.config.export_format == "all"
+                if should_export_csv and self.export_all_sheets_as_csv(
+                    document_id, self.config.target_directory, safe_title
+                ):
+                    csv_dir = self.config.target_directory / f"{safe_title}_sheets"
+                    exported_files["csv"] = csv_dir
 
         # Process linked documents if requested
         if self.config.follow_links and current_depth < self.config.link_depth and "html" in exported_files:

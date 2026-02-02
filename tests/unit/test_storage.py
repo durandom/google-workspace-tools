@@ -9,6 +9,7 @@ import pytest
 from google_workspace_tools.core.storage import (
     FileCredentialStorage,
     KeyringCredentialStorage,
+    OnePasswordCredentialStorage,
     StoredCredentials,
     get_credential_storage,
 )
@@ -232,22 +233,160 @@ class TestKeyringCredentialStorage:
 
 
 @pytest.mark.unit
+class TestOnePasswordCredentialStorage:
+    """Tests for 1Password CLI-based storage."""
+
+    def test_init_defaults(self):
+        """Test initialization with default values."""
+        storage = OnePasswordCredentialStorage()
+        assert storage.service_name == "google-workspace-tools"
+        assert storage.vault == "Private"
+
+    def test_init_custom_vault(self):
+        """Test initialization with custom vault."""
+        storage = OnePasswordCredentialStorage(vault="Work")
+        assert storage.vault == "Work"
+
+    def test_token_item_name_with_email(self):
+        """Test item name generation with email."""
+        storage = OnePasswordCredentialStorage()
+        assert storage._token_item_name("user@example.com") == "Google Workspace Tools - OAuth Token (user@example.com)"
+
+    def test_token_item_name_default(self):
+        """Test item name generation without email."""
+        storage = OnePasswordCredentialStorage()
+        assert storage._token_item_name(None) == "Google Workspace Tools - OAuth Token (Default)"
+
+    @patch("shutil.which")
+    def test_op_path_found(self, mock_which):
+        """Test op CLI path detection when available."""
+        mock_which.return_value = "/opt/homebrew/bin/op"
+        storage = OnePasswordCredentialStorage()
+        assert storage.op_path == "/opt/homebrew/bin/op"
+
+    @patch("shutil.which")
+    def test_op_path_not_found(self, mock_which):
+        """Test op CLI path detection when not available."""
+        mock_which.return_value = None
+        storage = OnePasswordCredentialStorage()
+        storage._op_path = None  # Reset cached value
+        assert storage.op_path is None
+
+    @patch("shutil.which")
+    def test_is_available_no_op(self, mock_which):
+        """Test availability check when op not installed."""
+        mock_which.return_value = None
+        storage = OnePasswordCredentialStorage()
+        storage._op_path = None  # Reset cached value
+        assert not storage.is_available()
+
+    @patch("subprocess.run")
+    @patch("shutil.which")
+    def test_is_available_op_not_signed_in(self, mock_which, mock_run):
+        """Test availability check when op not signed in."""
+        mock_which.return_value = "/opt/homebrew/bin/op"
+        mock_run.return_value = MagicMock(returncode=1)
+        storage = OnePasswordCredentialStorage()
+        assert not storage.is_available()
+
+    @patch("subprocess.run")
+    @patch("shutil.which")
+    def test_is_available_op_signed_in(self, mock_which, mock_run):
+        """Test availability check when op is signed in."""
+        mock_which.return_value = "/opt/homebrew/bin/op"
+        mock_run.return_value = MagicMock(returncode=0, stdout="[]")
+        storage = OnePasswordCredentialStorage()
+        assert storage.is_available()
+
+    @patch("subprocess.run")
+    @patch("shutil.which")
+    def test_load_not_found(self, mock_which, mock_run):
+        """Test loading non-existent credentials."""
+        mock_which.return_value = "/opt/homebrew/bin/op"
+        mock_run.return_value = MagicMock(returncode=1)
+        storage = OnePasswordCredentialStorage()
+        assert storage.load("user@example.com") is None
+
+    @patch("subprocess.run")
+    @patch("shutil.which")
+    def test_load_success(self, mock_which, mock_run):
+        """Test loading credentials successfully."""
+        mock_which.return_value = "/opt/homebrew/bin/op"
+
+        item_data = {
+            "notesPlain": json.dumps(
+                {
+                    "token": {"refresh_token": "xyz789"},
+                    "client_id": "client",
+                    "client_secret": "secret",
+                    "email": "test@example.com",
+                }
+            )
+        }
+        mock_run.return_value = MagicMock(returncode=0, stdout=json.dumps(item_data))
+
+        storage = OnePasswordCredentialStorage()
+        loaded = storage.load("test@example.com")
+
+        assert loaded is not None
+        assert loaded.token_data["refresh_token"] == "xyz789"
+        assert loaded.email == "test@example.com"
+
+    @patch("subprocess.run")
+    @patch("shutil.which")
+    def test_save_creates_new_item(self, mock_which, mock_run):
+        """Test saving creates new item when it doesn't exist."""
+        mock_which.return_value = "/opt/homebrew/bin/op"
+
+        # First call: item doesn't exist, second call: create succeeds
+        mock_run.side_effect = [
+            MagicMock(returncode=1),  # _item_exists check
+            MagicMock(returncode=0),  # create
+            MagicMock(returncode=1),  # accounts list doesn't exist
+            MagicMock(returncode=0),  # create accounts list
+        ]
+
+        storage = OnePasswordCredentialStorage()
+        creds = StoredCredentials(
+            token_data={"refresh_token": "test"},
+            email="user@example.com",
+        )
+        assert storage.save(creds)
+
+    @patch("subprocess.run")
+    @patch("shutil.which")
+    def test_delete_success(self, mock_which, mock_run):
+        """Test deleting credentials."""
+        mock_which.return_value = "/opt/homebrew/bin/op"
+        mock_run.return_value = MagicMock(returncode=0)
+
+        storage = OnePasswordCredentialStorage()
+        assert storage.delete("user@example.com")
+
+
+@pytest.mark.unit
 class TestGetCredentialStorage:
     """Tests for storage factory function."""
 
-    def test_file_storage_when_keyring_disabled(self, tmp_path: Path):
-        """Test getting file storage when keyring is disabled."""
+    def test_file_storage_when_explicitly_selected(self, tmp_path: Path):
+        """Test getting file storage when explicitly selected."""
         storage = get_credential_storage(
-            use_keyring=False,
+            storage_backend="file",
             token_path=tmp_path / "token.json",
         )
         assert isinstance(storage, FileCredentialStorage)
 
     def test_file_fallback_when_keyring_unavailable(self, tmp_path: Path):
         """Test falling back to file storage when keyring unavailable."""
-        with patch(
-            "google_workspace_tools.core.storage.KeyringCredentialStorage.is_available",
-            return_value=False,
+        with (
+            patch(
+                "google_workspace_tools.core.storage.OnePasswordCredentialStorage.is_available",
+                return_value=False,
+            ),
+            patch(
+                "google_workspace_tools.core.storage.KeyringCredentialStorage.is_available",
+                return_value=False,
+            ),
         ):
             storage = get_credential_storage(
                 use_keyring=True,
@@ -266,30 +405,36 @@ class TestGetCredentialStorage:
             pytest.raises(RuntimeError, match="Keyring unavailable"),
         ):
             get_credential_storage(
-                use_keyring=True,
+                storage_backend="keyring",
                 fallback_to_file=False,
             )
 
-    def test_keyring_storage_when_available(self):
-        """Test getting keyring storage when available."""
+    def test_keyring_storage_when_explicitly_selected(self):
+        """Test getting keyring storage when explicitly selected."""
         with patch(
             "google_workspace_tools.core.storage.KeyringCredentialStorage.is_available",
             return_value=True,
         ):
-            storage = get_credential_storage(use_keyring=True)
+            storage = get_credential_storage(storage_backend="keyring")
             assert isinstance(storage, KeyringCredentialStorage)
 
     def test_default_token_path(self):
         """Test default token path is used when not specified."""
-        storage = get_credential_storage(use_keyring=False)
+        storage = get_credential_storage(storage_backend="file")
         assert isinstance(storage, FileCredentialStorage)
         assert storage.token_path == Path("tmp/token_drive.json")
 
     def test_keyring_import_error_fallback(self, tmp_path: Path):
         """Test fallback when keyring module not installed."""
-        with patch(
-            "google_workspace_tools.core.storage.KeyringCredentialStorage.__init__",
-            side_effect=ImportError("No module named 'keyring'"),
+        with (
+            patch(
+                "google_workspace_tools.core.storage.OnePasswordCredentialStorage.is_available",
+                return_value=False,
+            ),
+            patch(
+                "google_workspace_tools.core.storage.KeyringCredentialStorage.__init__",
+                side_effect=ImportError("No module named 'keyring'"),
+            ),
         ):
             storage = get_credential_storage(
                 use_keyring=True,
@@ -297,3 +442,40 @@ class TestGetCredentialStorage:
                 token_path=tmp_path / "token.json",
             )
             assert isinstance(storage, FileCredentialStorage)
+
+    def test_1password_storage_when_explicitly_selected(self):
+        """Test getting 1Password storage when explicitly selected."""
+        with patch(
+            "google_workspace_tools.core.storage.OnePasswordCredentialStorage.is_available",
+            return_value=True,
+        ):
+            from google_workspace_tools.core.storage import OnePasswordCredentialStorage
+
+            storage = get_credential_storage(storage_backend="1password")
+            assert isinstance(storage, OnePasswordCredentialStorage)
+
+    def test_auto_prefers_1password_when_available(self):
+        """Test that auto mode prefers 1Password when available."""
+        with patch(
+            "google_workspace_tools.core.storage.OnePasswordCredentialStorage.is_available",
+            return_value=True,
+        ):
+            from google_workspace_tools.core.storage import OnePasswordCredentialStorage
+
+            storage = get_credential_storage(storage_backend="auto")
+            assert isinstance(storage, OnePasswordCredentialStorage)
+
+    def test_auto_falls_back_to_keyring(self):
+        """Test that auto mode falls back to keyring when 1Password unavailable."""
+        with (
+            patch(
+                "google_workspace_tools.core.storage.OnePasswordCredentialStorage.is_available",
+                return_value=False,
+            ),
+            patch(
+                "google_workspace_tools.core.storage.KeyringCredentialStorage.is_available",
+                return_value=True,
+            ),
+        ):
+            storage = get_credential_storage(storage_backend="auto")
+            assert isinstance(storage, KeyringCredentialStorage)

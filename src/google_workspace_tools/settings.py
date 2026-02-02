@@ -30,14 +30,22 @@ class Settings(BaseSettings):
         description="Path to cached OAuth token",
     )
 
-    # Keyring settings
+    # Credential storage settings
+    storage_backend: str = Field(
+        default="auto",
+        description="Storage backend: 'auto', '1password', 'keyring', or 'file'",
+    )
     use_keyring: bool = Field(
         default=True,
-        description="Use keyring for credential storage if available",
+        description="Use keyring for credential storage if available (legacy, use storage_backend)",
     )
     keyring_service_name: str = Field(
         default="google-workspace-tools",
-        description="Service name used for keyring storage",
+        description="Service name used for keyring/1Password storage",
+    )
+    onepassword_vault: str | None = Field(
+        default=None,
+        description="1Password vault name (default: 'Private')",
     )
 
     # Export settings

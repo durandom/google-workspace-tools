@@ -29,7 +29,27 @@ pip install google-workspace-tools
 
 # With Agno toolkit support for AI agents
 pip install google-workspace-tools[agno]
+
+# With secure keyring credential storage
+pip install google-workspace-tools[keyring]
 ```
+
+### Local Installation with uv
+
+Install `gwt` as a standalone CLI tool using [uv](https://docs.astral.sh/uv/):
+
+```bash
+# Install from PyPI
+uv tool install google-workspace-tools
+
+# Install with keyring support (recommended)
+uv tool install "google-workspace-tools[keyring]"
+
+# Install from local directory (for development)
+uv tool install --force ".[keyring]"
+```
+
+This installs `gwt` to `~/.local/bin/` (ensure it's in your `$PATH`).
 
 ## Quick Start
 

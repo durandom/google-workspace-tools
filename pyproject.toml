@@ -41,8 +41,8 @@ dependencies = [
     "google-auth-httplib2>=0.2.0",
     # HTML to Markdown conversion
     "html-to-markdown>=2.14.0",
-    # Excel/Office to Markdown conversion
-    "markitdown>=0.1.0",
+    # Excel/Office to Markdown conversion (xlsx extra required for spreadsheet support)
+    "markitdown[xlsx]>=0.1.0",
     "openpyxl>=3.1.0",
     # Configuration and validation
     "pydantic>=2.11.5",

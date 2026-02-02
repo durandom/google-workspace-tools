@@ -1,8 +1,9 @@
 """Common CLI utilities."""
 
+from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING, Generator
+from typing import TYPE_CHECKING
 
 import typer
 from loguru import logger

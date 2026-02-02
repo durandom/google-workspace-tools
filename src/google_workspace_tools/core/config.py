@@ -54,18 +54,26 @@ class GoogleDriveExporterConfig(BaseModel):
     keep_intermediate_xlsx: bool = Field(
         default=True, description="Keep intermediate XLSX files when converting to markdown"
     )
-    # Keyring configuration
+    # Credential storage configuration
+    storage_backend: Literal["auto", "1password", "keyring", "file"] = Field(
+        default="auto",
+        description="Storage backend: 'auto' (1Password→keyring→file), '1password', 'keyring', or 'file'",
+    )
     use_keyring: bool = Field(
         default=True,
-        description="Use keyring for credential storage if available, fallback to file if not",
+        description="Use keyring for credential storage if available (legacy, use storage_backend)",
     )
     keyring_service_name: str = Field(
         default="google-workspace-tools",
-        description="Service name used for keyring storage",
+        description="Service name used for keyring/1Password storage",
     )
     keyring_fallback_to_file: bool = Field(
         default=True,
-        description="Fall back to file storage if keyring is unavailable",
+        description="Fall back to file storage if preferred backend is unavailable",
+    )
+    onepassword_vault: str | None = Field(
+        default=None,
+        description="1Password vault name (default: 'Private')",
     )
 
     @field_validator("target_directory", mode="before")
