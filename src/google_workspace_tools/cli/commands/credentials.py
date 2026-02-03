@@ -39,8 +39,8 @@ def credentials(
     ] = None,
     storage: Annotated[
         str,
-        typer.Option("--storage", "-s", help="Storage backend: auto, 1password, keyring, file"),
-    ] = "auto",
+        typer.Option("--storage", "-s", help="Storage backend: 1password, keyring, file, auto"),
+    ] = "1password",
     use_keyring: Annotated[
         bool,
         typer.Option("--keyring/--no-keyring", help="Use keyring storage (legacy, use --storage)"),
@@ -346,34 +346,14 @@ def _handle_import(credentials_file: Path, storage_backend: str, vault: str | No
 
 
 def _handle_status(credentials_file: Path, token_path: Path, storage_backend: str, vault: str | None) -> None:
-    """Handle the status action."""
-    from ...core.storage import KeyringCredentialStorage, OnePasswordCredentialStorage
+    """Handle the status action (read-only, no OAuth trigger)."""
+    from ...core.storage import FileCredentialStorage, KeyringCredentialStorage, OnePasswordCredentialStorage
 
     console.print("[bold]Credential Status[/bold]\n")
 
-    # Try to get current user info
-    logged_in = False
-    try:
-        config = GoogleDriveExporterConfig(
-            credentials_path=credentials_file,
-            token_path=token_path,
-            storage_backend=storage_backend,  # type: ignore[arg-type]
-            onepassword_vault=vault,
-        )
-        exporter = GoogleDriveExporter(config)
-        user_info = exporter.get_authenticated_user_info()
-
-        if user_info:
-            console.print("  Logged in: [green]Yes[/green]")
-            console.print(f"  User: [cyan]{user_info.get('displayName', 'Unknown')}[/cyan]")
-            console.print(f"  Email: [cyan]{user_info.get('emailAddress', 'Unknown')}[/cyan]")
-            logged_in = True
-        else:
-            console.print("  Logged in: [yellow]Unknown[/yellow]")
-    except Exception:
-        console.print("  Logged in: [red]No[/red]")
-
-    console.print()
+    # Track if we found any stored credentials
+    found_credentials = False
+    logged_in_email: str | None = None
 
     # Show 1Password status
     if storage_backend in ("auto", "1password"):
@@ -395,6 +375,11 @@ def _handle_status(credentials_file: Path, token_path: Path, storage_backend: st
                 accounts = op_storage.list_accounts()
                 if accounts:
                     console.print(f"  1P OAuth Tokens: [green]{len(accounts)} account(s)[/green]")
+                    for account in accounts:
+                        console.print(f"    - [cyan]{account}[/cyan]")
+                    if not logged_in_email:
+                        logged_in_email = accounts[0]
+                        found_credentials = True
                 else:
                     console.print("  1P OAuth Tokens: [yellow]none stored[/yellow]")
             else:
@@ -424,6 +409,11 @@ def _handle_status(credentials_file: Path, token_path: Path, storage_backend: st
                 accounts = keyring_storage.list_accounts()
                 if accounts:
                     console.print(f"  Keyring OAuth Tokens: [green]{len(accounts)} account(s)[/green]")
+                    for account in accounts:
+                        console.print(f"    - [cyan]{account}[/cyan]")
+                    if not logged_in_email:
+                        logged_in_email = accounts[0]
+                        found_credentials = True
                 else:
                     console.print("  Keyring OAuth Tokens: [yellow]none stored[/yellow]")
             else:
@@ -437,6 +427,16 @@ def _handle_status(credentials_file: Path, token_path: Path, storage_backend: st
     if storage_backend in ("auto", "file"):
         if token_path.exists():
             console.print(f"  Token File: [green]exists[/green] ({token_path})")
+            # Try to extract email from file token
+            if not found_credentials:
+                try:
+                    file_storage = FileCredentialStorage(token_path, credentials_file)
+                    stored = file_storage.load()
+                    if stored and stored.email:
+                        logged_in_email = stored.email
+                        found_credentials = True
+                except Exception:
+                    pass
         else:
             console.print("  Token File: [dim]not found[/dim]")
 
@@ -445,8 +445,11 @@ def _handle_status(credentials_file: Path, token_path: Path, storage_backend: st
     else:
         console.print("  Credentials File: [dim]not found[/dim]")
 
-    # Print next-step hints based on login status
-    if logged_in:
+    console.print()
+
+    # Summary
+    if found_credentials:
+        console.print(f"  Logged in: [green]Yes[/green] as [cyan]{logged_in_email}[/cyan]")
         _print_next_steps_console(
             [
                 ("gwt download <URL>", "Download a Google Drive document"),
@@ -455,6 +458,7 @@ def _handle_status(credentials_file: Path, token_path: Path, storage_backend: st
             ]
         )
     else:
+        console.print("  Logged in: [yellow]No[/yellow]")
         _print_next_steps_console(
             [
                 ("gwt credentials login", "Authenticate with Google"),

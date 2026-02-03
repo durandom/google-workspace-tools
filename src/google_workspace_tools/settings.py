@@ -32,8 +32,8 @@ class Settings(BaseSettings):
 
     # Credential storage settings
     storage_backend: str = Field(
-        default="auto",
-        description="Storage backend: 'auto', '1password', 'keyring', or 'file'",
+        default="1password",
+        description="Storage backend: '1password', 'keyring', 'file', or 'auto'",
     )
     use_keyring: bool = Field(
         default=True,
