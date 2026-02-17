@@ -36,7 +36,12 @@ class TomlConfigSettingsSource(PydanticBaseSettingsSource):
         self._flat_data: dict[str, Any] = {}
         if self.toml_file.is_file():
             with open(self.toml_file, "rb") as f:
-                self._toml_data = tomllib.load(f)
+                try:
+                    self._toml_data = tomllib.load(f)
+                except tomllib.TOMLDecodeError as e:
+                    raise ValueError(
+                        f"Invalid TOML syntax in config file {self.toml_file}: {e}"
+                    ) from e
             # Flatten nested TOML into pydantic field names
             for (section, key), field_name in _TOML_FIELD_MAP.items():
                 if section in self._toml_data and key in self._toml_data[section]:
@@ -53,11 +58,14 @@ class TomlConfigSettingsSource(PydanticBaseSettingsSource):
 class Settings(BaseSettings):
     """Application settings with environment variable support.
 
-    Settings are loaded from (highest priority first):
+    Settings instance priority (highest first):
     1. Environment variables (GWT_ prefix)
     2. .env file (in current directory)
     3. Config file (~/.config/gwt/config.toml)
     4. Default values
+
+    Note: CLI commands may explicitly override these settings when values are
+    passed as arguments (for example, to GoogleDriveExporterConfig()).
 
     Environment variables are prefixed with GWT_ and use __ for nested values.
     Example: GWT_STORAGE_BACKEND=keyring
@@ -154,6 +162,10 @@ DEFAULT_CONFIG_TOML = """\
 # backend = "1password"        # 1password, keyring, file, auto
 # vault = "Private"            # 1Password vault name
 # keyring_service_name = "google-workspace-tools"
+
+[oauth]
+# credentials_path = ".client_secret.googleusercontent.com.json"
+# token_path = "tmp/token_drive.json"
 
 [export]
 # target_directory = "exports"

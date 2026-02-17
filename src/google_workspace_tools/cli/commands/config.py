@@ -33,7 +33,12 @@ def show() -> None:
     toml_values: dict[str, object] = {}
     if CONFIG_FILE.is_file():
         with open(CONFIG_FILE, "rb") as f:
-            toml_data = tomllib.load(f)
+            try:
+                toml_data = tomllib.load(f)
+            except tomllib.TOMLDecodeError as e:
+                console.print(f"[red]Failed to parse config file: {CONFIG_FILE}[/red]")
+                console.print(f"[dim]{e}[/dim]")
+                raise typer.Exit(1) from None
         from ...settings import _TOML_FIELD_MAP
 
         for (section, key), field_name in _TOML_FIELD_MAP.items():
@@ -50,6 +55,7 @@ def show() -> None:
 
     fields = [
         ("storage_backend", s.storage_backend),
+        ("use_keyring", str(s.use_keyring)),
         ("onepassword_vault", s.onepassword_vault),
         ("keyring_service_name", s.keyring_service_name),
         ("credentials_path", str(s.credentials_path)),

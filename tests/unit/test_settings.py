@@ -1,6 +1,9 @@
 """Tests for settings management with TOML config file support."""
 
+import pytest
+
 from google_workspace_tools.settings import (
+    _TOML_FIELD_MAP,
     CONFIG_FILE,
     DEFAULT_CONFIG_TOML,
     Settings,
@@ -56,6 +59,13 @@ class TestTomlConfigSettingsSource:
         result = source()
         assert result["onepassword_vault"] == "Work"
 
+    def test_invalid_toml_syntax(self, tmp_path):
+        """Malformed TOML should raise ValueError with helpful message."""
+        config = tmp_path / "config.toml"
+        config.write_text('[storage\nbackend = "keyring"')  # Missing closing bracket
+        with pytest.raises(ValueError, match="Invalid TOML syntax"):
+            TomlConfigSettingsSource(Settings, toml_file=config)
+
 
 class TestSettingsPriority:
     """Tests for settings source priority."""
@@ -100,13 +110,21 @@ class TestDefaultConfigToml:
         import tomllib
 
         data = tomllib.loads(DEFAULT_CONFIG_TOML)
-        # All values are commented out, so sections should be empty
-        assert "storage" in data
-        assert "export" in data
-        assert "logging" in data
+        # All values are commented out, so sections should be empty dicts
+        assert data["storage"] == {}
+        assert data["oauth"] == {}
+        assert data["export"] == {}
+        assert data["logging"] == {}
 
     def test_config_file_path_is_in_home(self):
         """Config file should be under ~/.config/gwt/."""
         assert ".config" in str(CONFIG_FILE)
         assert "gwt" in str(CONFIG_FILE)
         assert str(CONFIG_FILE).endswith("config.toml")
+
+    def test_toml_field_map_matches_settings_fields(self):
+        """All _TOML_FIELD_MAP values must correspond to actual Settings fields."""
+        field_names = set(Settings.model_fields.keys())
+        mapped_names = set(_TOML_FIELD_MAP.values())
+        invalid = mapped_names - field_names
+        assert not invalid, f"Invalid TOML mappings: {invalid}"
