@@ -10,6 +10,7 @@ from rich.table import Table
 
 from ...core.config import GoogleDriveExporterConfig
 from ...core.exporter import GoogleDriveExporter
+from ...settings import settings
 
 console = Console()
 
@@ -40,7 +41,7 @@ def credentials(
     storage: Annotated[
         str,
         typer.Option("--storage", "-s", help="Storage backend: 1password, keyring, file, auto"),
-    ] = "1password",
+    ] = settings.storage_backend,
     use_keyring: Annotated[
         bool,
         typer.Option("--keyring/--no-keyring", help="Use keyring storage (legacy, use --storage)"),
@@ -56,7 +57,7 @@ def credentials(
     vault: Annotated[
         str | None,
         typer.Option("--vault", "-V", help="1Password vault name (default: Private)"),
-    ] = None,
+    ] = settings.onepassword_vault,
 ) -> None:
     """Manage Google OAuth credentials.
 

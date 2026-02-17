@@ -6,6 +6,27 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, field_validator
 
 
+def _default_storage_backend() -> str:
+    """Get default storage backend from settings."""
+    from ..settings import settings
+
+    return settings.storage_backend
+
+
+def _default_keyring_service_name() -> str:
+    """Get default keyring service name from settings."""
+    from ..settings import settings
+
+    return settings.keyring_service_name
+
+
+def _default_onepassword_vault() -> str | None:
+    """Get default 1Password vault from settings."""
+    from ..settings import settings
+
+    return settings.onepassword_vault
+
+
 class GoogleDriveExporterConfig(BaseModel):
     """Configuration for GoogleDriveExporter."""
 
@@ -54,9 +75,9 @@ class GoogleDriveExporterConfig(BaseModel):
     keep_intermediate_xlsx: bool = Field(
         default=True, description="Keep intermediate XLSX files when converting to markdown"
     )
-    # Credential storage configuration
+    # Credential storage configuration — defaults come from settings (config.toml / env vars)
     storage_backend: Literal["auto", "1password", "keyring", "file"] = Field(
-        default="auto",
+        default_factory=_default_storage_backend,  # type: ignore[arg-type]
         description="Storage backend: 'auto' (1Password→keyring→file), '1password', 'keyring', or 'file'",
     )
     use_keyring: bool = Field(
@@ -64,7 +85,7 @@ class GoogleDriveExporterConfig(BaseModel):
         description="Use keyring for credential storage if available (legacy, use storage_backend)",
     )
     keyring_service_name: str = Field(
-        default="google-workspace-tools",
+        default_factory=_default_keyring_service_name,
         description="Service name used for keyring/1Password storage",
     )
     keyring_fallback_to_file: bool = Field(
@@ -72,7 +93,7 @@ class GoogleDriveExporterConfig(BaseModel):
         description="Fall back to file storage if preferred backend is unavailable",
     )
     onepassword_vault: str | None = Field(
-        default=None,
+        default_factory=_default_onepassword_vault,
         description="1Password vault name (default: 'Private')",
     )
 
