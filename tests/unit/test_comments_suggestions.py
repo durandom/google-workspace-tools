@@ -44,7 +44,8 @@ class TestFormatCommentsAsMarkdown:
         ]
         result = exporter._format_comments_as_markdown(comments)
         assert "## Comments" in result
-        assert "### Comment by Alice (2024-01-15)" in result
+        assert "### comment.c1" in result
+        assert "- **Author:** Alice (2024-01-15)" in result
         assert "> some document text" in result
         assert "This needs revision." in result
         assert "[Resolved]" not in result
@@ -63,7 +64,8 @@ class TestFormatCommentsAsMarkdown:
         ]
         result = exporter._format_comments_as_markdown(comments)
         assert "[Resolved]" in result
-        assert "### Comment by Bob (2024-02-20) [Resolved]" in result
+        assert "### comment.c2 [Resolved]" in result
+        assert "- **Author:** Bob (2024-02-20)" in result
 
     def test_orphaned_comment(self, exporter):
         comments = [

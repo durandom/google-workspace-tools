@@ -1031,7 +1031,7 @@ class GoogleDriveExporter:
                 "fileId": document_id,
                 "fields": (
                     "comments(id,author/displayName,content,quotedFileContent/value,"
-                    "resolved,createdTime,replies(author/displayName,content,createdTime)),"
+                    "resolved,createdTime,replies(id,author/displayName,content,createdTime)),"
                     "nextPageToken"
                 ),
                 "includeDeleted": False,
@@ -1047,6 +1047,7 @@ class GoogleDriveExporter:
                 for r in c.get("replies", []):
                     replies.append(
                         {
+                            "id": r.get("id", ""),
                             "author": r.get("author", {}).get("displayName", "Unknown"),
                             "content": r.get("content", ""),
                             "created_time": r.get("createdTime", ""),
@@ -1187,12 +1188,14 @@ class GoogleDriveExporter:
         lines = ["## Comments", ""]
 
         for comment in comments:
-            # Header with author, date, and status
+            # Header with comment ID, author, date, and status
+            comment_id = comment.get("id", "")
             date_str = comment.get("created_time", "")[:10]  # YYYY-MM-DD
-            header = f"### Comment by {comment['author']} ({date_str})"
+            header = f"### comment.{comment_id}"
             if comment.get("resolved"):
                 header += " [Resolved]"
             lines.append(header)
+            lines.append(f"- **Author:** {comment['author']} ({date_str})")
             lines.append("")
 
             # Quoted text
