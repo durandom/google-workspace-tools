@@ -68,6 +68,14 @@ def download(
         bool,
         typer.Option("--keep-xlsx", help="Keep intermediate XLSX files when converting spreadsheets to markdown"),
     ] = True,
+    include_comments: Annotated[
+        bool,
+        typer.Option("--comments/--no-comments", help="Include Google Docs comments in markdown exports"),
+    ] = True,
+    include_suggestions: Annotated[
+        bool,
+        typer.Option("--suggestions/--no-suggestions", help="Include Google Docs suggestions in markdown exports"),
+    ] = True,
 ) -> None:
     """Download one or more Google Drive documents.
 
@@ -134,6 +142,8 @@ def download(
         frontmatter_fields=frontmatter_fields,
         spreadsheet_export_mode=spreadsheet_mode,  # type: ignore[arg-type]
         keep_intermediate_xlsx=keep_xlsx,
+        include_comments=include_comments,
+        include_suggestions=include_suggestions,
     )
 
     exporter = GoogleDriveExporter(config)

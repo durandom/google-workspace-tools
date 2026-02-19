@@ -75,6 +75,9 @@ class GoogleDriveExporterConfig(BaseModel):
     keep_intermediate_xlsx: bool = Field(
         default=True, description="Keep intermediate XLSX files when converting to markdown"
     )
+    # Google Docs comments & suggestions
+    include_comments: bool = Field(default=True, description="Include Google Docs comments in markdown exports")
+    include_suggestions: bool = Field(default=True, description="Include Google Docs suggestions in markdown exports")
     # Credential storage configuration — defaults come from settings (config.toml / env vars)
     storage_backend: Literal["auto", "1password", "keyring", "file"] = Field(
         default_factory=_default_storage_backend,  # type: ignore[arg-type]
