@@ -7,6 +7,7 @@ import json
 import re
 import webbrowser
 import wsgiref.simple_server
+from collections import defaultdict
 from collections.abc import Generator
 from datetime import UTC, datetime
 from pathlib import Path
@@ -91,7 +92,7 @@ def _run_local_server_with_redirect_uri(
     finally:
         local_server.server_close()
 
-    return flow.credentials
+    return cast(Credentials, flow.credentials)
 
 
 class GoogleDriveExporter:
@@ -217,6 +218,14 @@ class GoogleDriveExporter:
             creds = self._authenticate()
             self._calendar_service = build("calendar", "v3", credentials=creds)
         return self._calendar_service
+
+    @property
+    def docs_service(self):
+        """Get or create the Google Docs API service instance."""
+        if not hasattr(self, "_docs_service"):
+            creds = self._authenticate()
+            self._docs_service = build("docs", "v1", credentials=creds)
+        return self._docs_service
 
     def _authenticate(self) -> Credentials:
         """Authenticate with Google Drive API.
@@ -752,13 +761,9 @@ class GoogleDriveExporter:
             if doc_type == DocumentType.DOCUMENT:
                 try:
                     logger.debug("Trying Method 3: Build separate docs service...")
-                    # Create Docs service if we don't have one
-                    if not hasattr(self, "_docs_service"):
-                        creds = self._authenticate()
-                        self._docs_service = build("docs", "v1", credentials=creds)
 
                     # Get document via Docs API
-                    doc = self._docs_service.documents().get(documentId=document_id).execute()
+                    doc = self.docs_service.documents().get(documentId=document_id).execute()
 
                     # Create metadata dict similar to Drive API response
                     docs_metadata = {
@@ -976,6 +981,12 @@ class GoogleDriveExporter:
                         )
                         f.write(frontmatter)
                     f.write(markdown_content)
+
+                    # Append comments and suggestions for Google Docs markdown exports
+                    if doc_type == DocumentType.DOCUMENT:
+                        extras = self._fetch_doc_extras(document_id)
+                        if extras:
+                            f.write("\n\n---\n\n" + extras)
             else:
                 # Write binary data for other formats
                 with open(output_path, "wb") as f_bin:
@@ -1000,6 +1011,296 @@ class GoogleDriveExporter:
                 self.download_callback(document_id, format_key, output_path, False)
 
             return False
+
+    # ─── Google Docs comments & suggestions ────────────────────────────
+
+    def _fetch_comments(self, document_id: str) -> list[dict]:
+        """Fetch comments for a Google Drive document via the Drive Comments API v3.
+
+        Args:
+            document_id: Google Drive document ID.
+
+        Returns:
+            List of normalized comment dicts with replies.
+        """
+        comments: list[dict] = []
+        page_token: str | None = None
+
+        while True:
+            request_params: dict[str, Any] = {
+                "fileId": document_id,
+                "fields": (
+                    "comments(id,author/displayName,content,quotedFileContent/value,"
+                    "resolved,createdTime,replies(author/displayName,content,createdTime)),"
+                    "nextPageToken"
+                ),
+                "includeDeleted": False,
+                "pageSize": 100,
+            }
+            if page_token:
+                request_params["pageToken"] = page_token
+
+            response = self.service.comments().list(**request_params).execute()
+
+            for c in response.get("comments", []):
+                replies = []
+                for r in c.get("replies", []):
+                    replies.append(
+                        {
+                            "author": r.get("author", {}).get("displayName", "Unknown"),
+                            "content": r.get("content", ""),
+                            "created_time": r.get("createdTime", ""),
+                        }
+                    )
+
+                comments.append(
+                    {
+                        "id": c.get("id", ""),
+                        "author": c.get("author", {}).get("displayName", "Unknown"),
+                        "content": c.get("content", ""),
+                        "quoted_text": c.get("quotedFileContent", {}).get("value"),
+                        "resolved": c.get("resolved", False),
+                        "created_time": c.get("createdTime", ""),
+                        "replies": replies,
+                    }
+                )
+
+            page_token = response.get("nextPageToken")
+            if not page_token:
+                break
+
+        logger.debug(f"Fetched {len(comments)} comments for document {document_id}")
+        return comments
+
+    def _fetch_suggestions(self, document_id: str) -> list[dict]:
+        """Fetch suggestions for a Google Doc via the Docs API v1.
+
+        Uses SUGGESTIONS_INLINE view mode to see all pending suggestions,
+        then groups them by suggestion_id.
+
+        Args:
+            document_id: Google Docs document ID.
+
+        Returns:
+            List of suggestion dicts grouped by suggestion_id.
+        """
+        doc = (
+            self.docs_service.documents()
+            .get(documentId=document_id, suggestionsViewMode="SUGGESTIONS_INLINE")
+            .execute()
+        )
+
+        raw_suggestions: list[dict] = []
+        body = doc.get("body", {})
+        content = body.get("content", [])
+
+        for element in content:
+            paragraph = element.get("paragraph")
+            if not paragraph:
+                continue
+
+            # Build full paragraph text for context
+            para_text = ""
+            for pe in paragraph.get("elements", []):
+                text_run = pe.get("textRun", {})
+                para_text += text_run.get("content", "")
+            para_text = para_text.strip()
+
+            for pe in paragraph.get("elements", []):
+                text_run = pe.get("textRun", {})
+                content_text = text_run.get("content", "")
+
+                for sid in text_run.get("suggestedInsertionIds", []):
+                    raw_suggestions.append(
+                        {
+                            "suggestion_id": sid,
+                            "type": "insertion",
+                            "content": content_text,
+                            "paragraph_context": para_text,
+                        }
+                    )
+
+                for sid in text_run.get("suggestedDeletionIds", []):
+                    raw_suggestions.append(
+                        {
+                            "suggestion_id": sid,
+                            "type": "deletion",
+                            "content": content_text,
+                            "paragraph_context": para_text,
+                        }
+                    )
+
+                for sid, change in text_run.get("suggestedTextStyleChanges", {}).items():
+                    raw_suggestions.append(
+                        {
+                            "suggestion_id": sid,
+                            "type": "style_change",
+                            "content": content_text,
+                            "style": change.get("textStyle", {}),
+                            "paragraph_context": para_text,
+                        }
+                    )
+
+            for sid, change in paragraph.get("suggestedParagraphStyleChanges", {}).items():
+                raw_suggestions.append(
+                    {
+                        "suggestion_id": sid,
+                        "type": "paragraph_style_change",
+                        "content": para_text,
+                        "style": change.get("paragraphStyle", {}),
+                        "paragraph_context": para_text,
+                    }
+                )
+
+            for sid, change in paragraph.get("suggestedBulletChanges", {}).items():
+                raw_suggestions.append(
+                    {
+                        "suggestion_id": sid,
+                        "type": "bullet_change",
+                        "content": para_text,
+                        "bullet": change.get("bullet", {}),
+                        "paragraph_context": para_text,
+                    }
+                )
+
+        # Group by suggestion_id
+        grouped: dict[str, list[dict]] = defaultdict(list)
+        for s in raw_suggestions:
+            grouped[s["suggestion_id"]].append(s)
+
+        result = [{"suggestion_id": sid, "parts": parts} for sid, parts in grouped.items()]
+        logger.debug(f"Fetched {len(raw_suggestions)} suggestion parts across {len(result)} suggestions")
+        return result
+
+    def _format_comments_as_markdown(self, comments: list[dict]) -> str:
+        """Format comments as a markdown section.
+
+        Args:
+            comments: List of normalized comment dicts from _fetch_comments.
+
+        Returns:
+            Formatted markdown string.
+        """
+        if not comments:
+            return ""
+
+        lines = ["## Comments", ""]
+
+        for comment in comments:
+            # Header with author, date, and status
+            date_str = comment.get("created_time", "")[:10]  # YYYY-MM-DD
+            header = f"### Comment by {comment['author']} ({date_str})"
+            if comment.get("resolved"):
+                header += " [Resolved]"
+            lines.append(header)
+            lines.append("")
+
+            # Quoted text
+            quoted = comment.get("quoted_text")
+            if quoted:
+                lines.append(f"> {quoted}")
+            else:
+                lines.append("> [Orphaned — original text deleted]")
+            lines.append("")
+
+            # Comment body
+            lines.append(comment.get("content", ""))
+            lines.append("")
+
+            # Replies
+            if comment.get("replies"):
+                lines.append("**Replies:**")
+                for reply in comment["replies"]:
+                    reply_date = reply.get("created_time", "")[:10]
+                    lines.append(f"- **{reply['author']}** ({reply_date}): {reply['content']}")
+                lines.append("")
+
+            lines.append("---")
+            lines.append("")
+
+        return "\n".join(lines)
+
+    def _format_suggestions_as_markdown(self, suggestions: list[dict]) -> str:
+        """Format suggestions as a markdown section.
+
+        Args:
+            suggestions: List of grouped suggestion dicts from _fetch_suggestions.
+
+        Returns:
+            Formatted markdown string.
+        """
+        if not suggestions:
+            return ""
+
+        lines = ["## Suggestions", ""]
+
+        for suggestion in suggestions:
+            lines.append(f"### {suggestion['suggestion_id']}")
+
+            for part in suggestion["parts"]:
+                stype = part["type"]
+                content = part.get("content", "").strip()
+                context = part.get("paragraph_context", "").strip()
+
+                if stype == "insertion":
+                    lines.append(f'- **Insert:** "{content}"')
+                elif stype == "deletion":
+                    lines.append(f"- **Delete:** ~~{content}~~")
+                elif stype == "style_change":
+                    style = part.get("style", {})
+                    lines.append(f'- **Style change:** on "{content}" → {style}')
+                elif stype == "paragraph_style_change":
+                    style = part.get("style", {})
+                    lines.append(f"- **Paragraph style change:** {style}")
+                elif stype == "bullet_change":
+                    bullet = part.get("bullet", {})
+                    lines.append(f"- **Bullet change:** {bullet}")
+
+                if context and context != content:
+                    # Truncate long context
+                    ctx = context[:120] + "…" if len(context) > 120 else context
+                    lines.append(f"  Context: {ctx}")
+
+            lines.append("")
+            lines.append("---")
+            lines.append("")
+
+        return "\n".join(lines)
+
+    def _fetch_doc_extras(self, document_id: str) -> str:
+        """Fetch and format comments and suggestions for a Google Doc.
+
+        Controlled by config.include_comments and config.include_suggestions.
+        Each API call is wrapped in try/except so a failure in one doesn't
+        block the other.
+
+        Args:
+            document_id: Google Drive/Docs document ID.
+
+        Returns:
+            Combined markdown string, or empty string if nothing to add.
+        """
+        sections: list[str] = []
+
+        if self.config.include_comments:
+            try:
+                comments = self._fetch_comments(document_id)
+                md = self._format_comments_as_markdown(comments)
+                if md:
+                    sections.append(md)
+            except Exception as e:
+                logger.warning(f"Failed to fetch comments for {document_id}: {e}")
+
+        if self.config.include_suggestions:
+            try:
+                suggestions = self._fetch_suggestions(document_id)
+                md = self._format_suggestions_as_markdown(suggestions)
+                if md:
+                    sections.append(md)
+            except Exception as e:
+                logger.warning(f"Failed to fetch suggestions for {document_id}: {e}")
+
+        return "\n\n".join(sections)
 
     def _extract_links_from_text(self, content: str) -> list[str]:
         """Extract Google Drive links from HTML text content.
@@ -1419,10 +1720,7 @@ class GoogleDriveExporter:
             safe_title = output_name or re.sub(r"[^\w\s-]", "_", doc_title).strip()
 
             # Determine output path
-            if output_path:
-                file_output_path = output_path
-            else:
-                file_output_path = self.config.target_directory / f"{safe_title}.{extension}"
+            file_output_path = output_path or self.config.target_directory / f"{safe_title}.{extension}"
 
             # Build source URL
             source_url = f"https://drive.google.com/file/d/{document_id}"

@@ -14,6 +14,7 @@ from .. import __version__
 from ..core.storage import get_credential_storage
 from ..settings import settings
 from .commands.calendar import calendar_app
+from .commands.config import config_app
 from .commands.credentials import credentials
 from .commands.download import download, mirror
 from .commands.mail import mail
@@ -166,6 +167,7 @@ app.command()(formats)
 app.command(name="extract-id")(extract_id)
 app.command()(mail)
 app.add_typer(calendar_app, name="calendar")
+app.add_typer(config_app, name="config")
 app.command()(credentials)
 app.command()(version)
 
