@@ -6,6 +6,14 @@ This file provides guidance to Claude Code when working with code in this reposi
 
 `google-workspace-tools` is a Python library and CLI for exporting Google Drive documents (Docs, Sheets, Slides), Gmail messages, and Google Calendar events to various formats with link following capabilities and optional AI agent integration.
 
+## Version Management
+
+**⚠️ Version is defined in TWO places — both MUST be updated together:**
+- `pyproject.toml` → `version = "X.Y.Z"` (packaging version)
+- `src/google_workspace_tools/__init__.py` → `__version__ = "X.Y.Z"` (runtime version)
+
+After bumping, run `uv lock` to update `uv.lock`.
+
 ## Development Commands
 
 ```bash
