@@ -106,7 +106,7 @@ def init(
         raise typer.Exit(1)
 
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    CONFIG_FILE.write_text(DEFAULT_CONFIG_TOML)
+    CONFIG_FILE.write_text(DEFAULT_CONFIG_TOML, encoding="utf-8")
     console.print(f"[green]Created config file: {CONFIG_FILE}[/green]")
     console.print("[dim]Edit it to customize your settings[/dim]")
 

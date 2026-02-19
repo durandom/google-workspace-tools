@@ -236,7 +236,7 @@ rodney click '[aria-label="Accept suggestion"]'
 
 ### Patches an Rodney
 
-Änderungen in `/Users/mhild/src/durandom/agentic/cli-tools/rodney/main.go`:
+Änderungen in `rodney/main.go`:
 
 1. `--single-process` entfernt, hinter `ROD_SINGLE_PROCESS=1` gestellt
 2. `ROD_HEADLESS=false` für sichtbaren Browser eingeführt

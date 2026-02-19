@@ -1029,7 +1029,11 @@ class GoogleDriveExporter:
         while True:
             request_params: dict[str, Any] = {
                 "fileId": document_id,
-                "fields": "*",
+                "fields": (
+                    "comments(id,author/displayName,content,quotedFileContent/value,"
+                    "resolved,createdTime,replies(author/displayName,content,createdTime)),"
+                    "nextPageToken"
+                ),
                 "includeDeleted": False,
                 "pageSize": 100,
             }

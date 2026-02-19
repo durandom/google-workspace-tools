@@ -5,7 +5,7 @@ Uses the existing gwt authentication infrastructure to fetch a document
 with suggestionsViewMode=SUGGESTIONS_INLINE and extract all pending suggestions.
 
 Usage:
-    uv run python scratch_suggestions.py <document_url_or_id>
+    uv run python docs/research/suggestions_prototype.py <document_url_or_id>
 """
 
 import json

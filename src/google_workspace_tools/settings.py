@@ -47,7 +47,7 @@ class TomlConfigSettingsSource(PydanticBaseSettingsSource):
 
     def get_field_value(self, field: Any, field_name: str) -> tuple[Any, str, bool]:
         value = self._flat_data.get(field_name)
-        return value, field_name, value is not None
+        return value, field_name, False
 
     def __call__(self) -> dict[str, Any]:
         return {k: v for k, v in self._flat_data.items() if v is not None}
