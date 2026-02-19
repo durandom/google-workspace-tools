@@ -1,5 +1,6 @@
 """End-to-end tests for Calendar CLI commands."""
 
+import re
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -8,6 +9,13 @@ from typer.testing import CliRunner
 from google_workspace_tools.cli.app import app
 
 runner = CliRunner()
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _strip_ansi(text: str) -> str:
+    """Remove ANSI escape codes from Rich/Typer CLI output."""
+    return _ANSI_RE.sub("", text)
 
 
 @pytest.mark.e2e
@@ -32,17 +40,19 @@ class TestCalendarHelp:
         """Test calendar get subcommand help."""
         result = runner.invoke(app, ["calendar", "get", "--help"])
         assert result.exit_code == 0
-        assert "--event-id" in result.stdout or "-e" in result.stdout
-        assert "--calendar" in result.stdout
+        output = _strip_ansi(result.stdout)
+        assert "--event-id" in output or "-e" in output
+        assert "--calendar" in output or "calendar" in output
 
     def test_calendar_export_help(self):
         """Test calendar export subcommand help."""
         result = runner.invoke(app, ["calendar", "export", "--help"])
         assert result.exit_code == 0
-        assert "--calendar" in result.stdout
-        assert "-f" in result.stdout or "--format" in result.stdout
-        assert "-a" in result.stdout or "--after" in result.stdout
-        assert "-b" in result.stdout or "--before" in result.stdout
+        output = _strip_ansi(result.stdout)
+        assert "--calendar" in output or "calendar" in output
+        assert "-f" in output or "--format" in output
+        assert "-a" in output or "--after" in output
+        assert "-b" in output or "--before" in output
 
     def test_calendar_in_main_help(self):
         """Test that calendar appears in main help."""

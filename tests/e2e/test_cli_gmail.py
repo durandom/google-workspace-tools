@@ -1,5 +1,6 @@
 """End-to-end tests for Gmail CLI commands."""
 
+import re
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -8,6 +9,13 @@ from typer.testing import CliRunner
 from google_workspace_tools.cli.app import app
 
 runner = CliRunner()
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _strip_ansi(text: str) -> str:
+    """Remove ANSI escape codes from Rich/Typer CLI output."""
+    return _ANSI_RE.sub("", text)
 
 
 @pytest.mark.e2e
@@ -334,7 +342,8 @@ class TestMailStdout:
         result = runner.invoke(app, ["mail", "--help"])
         assert result.exit_code == 0
         assert "stdout" in result.stdout.lower()
-        assert "--output" in result.stdout
+        output = _strip_ansi(result.stdout)
+        assert "--output" in output or "-o" in output
 
     @patch("google_workspace_tools.cli.commands.mail.GoogleDriveExporter")
     def test_mail_stdout_outputs_to_terminal(self, mock_exporter_class, tmp_path):

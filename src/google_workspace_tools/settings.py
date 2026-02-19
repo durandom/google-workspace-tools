@@ -39,9 +39,7 @@ class TomlConfigSettingsSource(PydanticBaseSettingsSource):
                 try:
                     self._toml_data = tomllib.load(f)
                 except tomllib.TOMLDecodeError as e:
-                    raise ValueError(
-                        f"Invalid TOML syntax in config file {self.toml_file}: {e}"
-                    ) from e
+                    raise ValueError(f"Invalid TOML syntax in config file {self.toml_file}: {e}") from e
             # Flatten nested TOML into pydantic field names
             for (section, key), field_name in _TOML_FIELD_MAP.items():
                 if section in self._toml_data and key in self._toml_data[section]:
