@@ -12,7 +12,7 @@ from collections.abc import Generator
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal, cast
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 import google.auth.transport.requests
 import yaml
@@ -458,6 +458,37 @@ class GoogleDriveExporter:
         yaml_content = yaml.dump(frontmatter_data, default_flow_style=False, allow_unicode=True, sort_keys=False)
 
         return f"---\n{yaml_content}---\n\n"
+
+    @staticmethod
+    def _unwrap_google_redirect_urls(text: str) -> str:
+        """Replace Google redirect URLs with the actual target URLs they wrap.
+
+        Google Docs exports wrap external links in tracking URLs of the form:
+        https://www.google.com/url?q=ENCODED_URL&sa=D&source=editors&ust=...&usg=...
+
+        These cause noisy diffs (ust/usg change per export) and break in offline
+        contexts. This method extracts the ``q`` parameter value and URL-decodes it.
+
+        Args:
+            text: Markdown (or any text) that may contain Google redirect URLs.
+
+        Returns:
+            Text with all Google redirect URLs replaced by their decoded targets.
+        """
+
+        def _replace(match: re.Match[str]) -> str:
+            redirect_url = match.group(0)
+            parsed = urlparse(redirect_url)
+            params = parse_qs(parsed.query, keep_blank_values=True)
+            q_values = params.get("q")
+            if not q_values or not q_values[0]:
+                return redirect_url  # No q param — leave untouched
+            target = unquote(q_values[0])
+            return target
+
+        # Match Google redirect URLs; stop at whitespace or markdown link-closing )
+        pattern = r"https://www\.google\.com/url\?[^\s\)]+"
+        return re.sub(pattern, _replace, text)
 
     def extract_document_id(self, url_or_id: str) -> str:
         """Extract document ID from URL or return the ID if already provided.
@@ -928,6 +959,7 @@ class GoogleDriveExporter:
                 # Convert HTML to Markdown and extract inline images
                 html_content = fh.getvalue().decode("utf-8")
                 markdown_content, images, _warnings = convert_with_inline_images(html_content)
+                markdown_content = self._unwrap_google_redirect_urls(markdown_content)
 
                 # Save extracted images and update markdown references
                 if images:

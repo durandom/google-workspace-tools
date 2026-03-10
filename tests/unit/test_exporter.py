@@ -210,3 +210,62 @@ class TestFrontmatter:
         config = GoogleDriveExporterConfig()
         assert config.enable_frontmatter is False
         assert config.frontmatter_fields == {}
+
+
+@pytest.mark.unit
+class TestUnwrapGoogleRedirectUrls:
+    """Tests for _unwrap_google_redirect_urls static method."""
+
+    def test_standard_redirect_url(self):
+        """Standard Google redirect URL is replaced with the real target."""
+        text = (
+            "[GA - The Source]"
+            "(https://www.google.com/url?q=https://source.redhat.com/groups/public/commonreleaseterms"
+            "%2Fonprem%2Fgeneral_availability&sa=D&source=editors&ust=1773076718514988"
+            "&usg=AOvVaw2n-EnUBtpTSQwuz4i9C_O_)"
+        )
+        result = GoogleDriveExporter._unwrap_google_redirect_urls(text)
+        assert result == (
+            "[GA - The Source]"
+            "(https://source.redhat.com/groups/public/commonreleaseterms/onprem/general_availability)"
+        )
+
+    def test_url_encoded_characters_in_q(self):
+        """Percent-encoded characters in the q value are decoded."""
+        text = (
+            "[Sheet link]"
+            "(https://www.google.com/url?q=https://docs.google.com/spreadsheets/d/abc%3Ftab%3Dt.0"
+            "&sa=D&source=editors&ust=123&usg=XYZ)"
+        )
+        result = GoogleDriveExporter._unwrap_google_redirect_urls(text)
+        assert result == "[Sheet link](https://docs.google.com/spreadsheets/d/abc?tab=t.0)"
+
+    def test_non_google_redirect_url_unchanged(self):
+        """URLs that are not Google redirects are left untouched."""
+        text = "[Example](https://example.com/some/path?foo=bar)"
+        result = GoogleDriveExporter._unwrap_google_redirect_urls(text)
+        assert result == text
+
+    def test_multiple_redirect_urls_in_document(self):
+        """All Google redirect URLs in a document are unwrapped."""
+        text = (
+            "See [link A](https://www.google.com/url?q=https://a.com&sa=D&usg=AA) "
+            "and [link B](https://www.google.com/url?q=https://b.com%2Fpath&sa=D&usg=BB)."
+        )
+        result = GoogleDriveExporter._unwrap_google_redirect_urls(text)
+        assert result == "See [link A](https://a.com) and [link B](https://b.com/path)."
+
+    def test_redirect_url_missing_q_parameter(self):
+        """Google redirect URL with no q param is left untouched."""
+        text = "[Bad link](https://www.google.com/url?sa=D&source=editors&usg=XYZ)"
+        result = GoogleDriveExporter._unwrap_google_redirect_urls(text)
+        assert result == text
+
+    def test_mixed_links(self):
+        """Document with both redirect and normal links — only redirects are changed."""
+        text = (
+            "[Normal](https://example.com) "
+            "[Wrapped](https://www.google.com/url?q=https://real.com&sa=D&usg=ZZ)"
+        )
+        result = GoogleDriveExporter._unwrap_google_redirect_urls(text)
+        assert result == "[Normal](https://example.com) [Wrapped](https://real.com)"
