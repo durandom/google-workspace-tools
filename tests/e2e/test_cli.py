@@ -63,7 +63,7 @@ class TestVersionCommand:
         result = runner.invoke(app, ["version"])
         assert result.exit_code == 0
         assert "google-workspace-tools" in result.stdout
-        assert "0.2.0" in result.stdout
+        assert "0.3.1" in result.stdout
 
     def test_version_flag(self):
         """Test --version flag."""
