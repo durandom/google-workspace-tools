@@ -12,7 +12,7 @@ from collections.abc import Generator
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal, cast
-from urllib.parse import parse_qs, unquote, urlparse
+from urllib.parse import parse_qs, urlparse
 
 import google.auth.transport.requests
 import yaml
@@ -483,8 +483,7 @@ class GoogleDriveExporter:
             q_values = params.get("q")
             if not q_values or not q_values[0]:
                 return redirect_url  # No q param — leave untouched
-            target = unquote(q_values[0])
-            return target
+            return q_values[0]
 
         # Match Google redirect URLs; stop at whitespace or markdown link-closing )
         pattern = r"https://www\.google\.com/url\?[^\s\)]+"
