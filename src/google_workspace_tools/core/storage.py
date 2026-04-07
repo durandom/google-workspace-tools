@@ -78,7 +78,7 @@ class FileCredentialStorage(CredentialStorage):
                 token_data=token_data,
                 client_id=token_data.get("client_id"),
                 client_secret=token_data.get("client_secret"),
-                email=None,  # File storage doesn't track email separately
+                email=token_data.get("account"),
             )
         except (json.JSONDecodeError, OSError) as e:
             logger.warning(f"Failed to load token file: {e}")

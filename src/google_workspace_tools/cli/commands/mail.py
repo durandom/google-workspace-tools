@@ -10,6 +10,7 @@ from ... import __version__
 from ...core.config import GoogleDriveExporterConfig
 from ...core.exporter import GoogleDriveExporter
 from ...core.filters import GmailSearchFilter
+from ...settings import settings
 from ..formatters import get_formatter
 from ..output import OutputMode, get_output_mode
 from ..schemas import EmailThreadExport, MailOutput
@@ -26,10 +27,8 @@ def mail(
     mode: Annotated[str, typer.Option("--mode", "-m", help="Export mode (thread, individual)")] = "thread",
     output: Annotated[Path | None, typer.Option("--output", "-o", help="Output directory (default: stdout)")] = None,
     depth: Annotated[int, typer.Option("--depth", "-d", help="Link following depth")] = 0,
-    credentials: Annotated[Path, typer.Option("--credentials", "-c", help="Path to credentials file")] = Path(
-        ".client_secret.googleusercontent.com.json"
-    ),
-    token: Annotated[Path, typer.Option("--token", "-t", help="Path to token file")] = Path("tmp/token_drive.json"),
+    credentials: Annotated[Path, typer.Option("--credentials", "-c", help="Path to credentials file")] = settings.credentials_path,
+    token: Annotated[Path, typer.Option("--token", "-t", help="Path to token file")] = settings.token_path,
 ) -> None:
     """Export Gmail messages to JSON or Markdown.
 

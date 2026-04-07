@@ -49,11 +49,11 @@ def credentials(
     token_path: Annotated[
         Path,
         typer.Option("--token", "-t", help="Path to token file (for file storage)"),
-    ] = Path("tmp/token_drive.json"),
+    ] = settings.token_path,
     credentials_file: Annotated[
         Path,
         typer.Option("--credentials", "-c", help="Path to client credentials file"),
-    ] = Path(".client_secret.googleusercontent.com.json"),
+    ] = settings.credentials_path,
     vault: Annotated[
         str | None,
         typer.Option("--vault", "-V", help="1Password vault name (default: Private)"),
@@ -331,7 +331,7 @@ def _handle_import(credentials_file: Path, storage_backend: str, vault: str | No
 
         if target_storage is None:
             # Fall back to file storage
-            file_storage = FileCredentialStorage(token_path=Path("tmp/token_drive.json"))
+            file_storage = FileCredentialStorage(token_path=settings.token_path)
             target_storage = file_storage
             target_name = "file (~/.config/gwt/client_secret.json)"
 
@@ -434,12 +434,11 @@ def _handle_status(credentials_file: Path, token_path: Path, storage_backend: st
     if storage_backend in ("auto", "file"):
         if token_path.exists():
             console.print(f"  Token File: [green]exists[/green] ({token_path})")
-            # Try to extract email from file token
             if not found_credentials:
                 try:
                     file_storage = FileCredentialStorage(token_path, credentials_file)
                     stored = file_storage.load()
-                    if stored and stored.email:
+                    if stored and stored.token_data:
                         logged_in_email = stored.email
                         found_credentials = True
                 except Exception:
@@ -447,8 +446,12 @@ def _handle_status(credentials_file: Path, token_path: Path, storage_backend: st
         else:
             console.print("  Token File: [dim]not found[/dim]")
 
+    # Check client credentials file (configured path + ~/.config/gwt/)
+    gwt_client_secret = Path.home() / ".config" / "gwt" / "client_secret.json"
     if credentials_file.exists():
         console.print(f"  Credentials File: [green]exists[/green] ({credentials_file})")
+    elif gwt_client_secret.exists():
+        console.print(f"  Credentials File: [green]exists[/green] ({gwt_client_secret})")
     else:
         console.print("  Credentials File: [dim]not found[/dim]")
 
@@ -456,7 +459,10 @@ def _handle_status(credentials_file: Path, token_path: Path, storage_backend: st
 
     # Summary
     if found_credentials:
-        console.print(f"  Logged in: [green]Yes[/green] as [cyan]{logged_in_email}[/cyan]")
+        if logged_in_email:
+            console.print(f"  Logged in: [green]Yes[/green] as [cyan]{logged_in_email}[/cyan]")
+        else:
+            console.print("  Logged in: [green]Yes[/green]")
         _print_next_steps_console(
             [
                 ("gwt download <URL>", "Download a Google Drive document"),

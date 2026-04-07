@@ -4,7 +4,7 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
 # Config file location
@@ -113,6 +113,14 @@ class Settings(BaseSettings):
         default="md",
         description="Default export format (md, pdf, docx, html, etc.)",
     )
+
+    @model_validator(mode="after")
+    def expand_paths(self) -> "Settings":
+        """Expand ~ in path fields."""
+        self.credentials_path = self.credentials_path.expanduser()
+        self.token_path = self.token_path.expanduser()
+        self.target_directory = self.target_directory.expanduser()
+        return self
 
     # Logging settings
     log_level: str = Field(

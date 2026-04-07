@@ -9,6 +9,7 @@ import yaml
 from ... import __version__
 from ...core.config import GoogleDriveExporterConfig
 from ...core.exporter import GoogleDriveExporter
+from ...settings import settings
 from ..formatters import get_formatter
 from ..output import OutputMode, get_output_mode
 from ..schemas import (
@@ -41,7 +42,7 @@ def download(
     credentials: Annotated[
         Path,
         typer.Option("--credentials", "-c", help="Path to Google OAuth credentials file"),
-    ] = Path(".client_secret.googleusercontent.com.json"),
+    ] = settings.credentials_path,
     frontmatter: Annotated[
         list[str] | None,
         typer.Option(
@@ -263,7 +264,7 @@ def mirror(
     credentials: Annotated[
         Path,
         typer.Option("--credentials", "-c", help="Path to Google OAuth credentials file"),
-    ] = Path(".client_secret.googleusercontent.com.json"),
+    ] = settings.credentials_path,
 ) -> None:
     """Mirror documents from a configuration file.
 

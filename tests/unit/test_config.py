@@ -13,11 +13,13 @@ class TestGoogleDriveExporterConfig:
     """Tests for GoogleDriveExporterConfig."""
 
     def test_default_config(self):
-        """Test default configuration values."""
+        """Test default configuration values come from settings."""
+        from google_workspace_tools.settings import settings
+
         config = GoogleDriveExporterConfig()
 
-        assert config.credentials_path == Path(".client_secret.googleusercontent.com.json")
-        assert config.token_path == Path("tmp/token_drive.json")
+        assert config.credentials_path == settings.credentials_path
+        assert config.token_path == settings.token_path
         assert config.target_directory == Path("exports")
         assert config.export_format == "html"
         assert config.link_depth == 0

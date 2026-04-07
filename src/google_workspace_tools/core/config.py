@@ -27,11 +27,25 @@ def _default_onepassword_vault() -> str | None:
     return settings.onepassword_vault
 
 
+def _default_credentials_path() -> Path:
+    """Get default credentials path from settings."""
+    from ..settings import settings
+
+    return settings.credentials_path
+
+
+def _default_token_path() -> Path:
+    """Get default token path from settings."""
+    from ..settings import settings
+
+    return settings.token_path
+
+
 class GoogleDriveExporterConfig(BaseModel):
     """Configuration for GoogleDriveExporter."""
 
-    credentials_path: Path = Field(default=Path(".client_secret.googleusercontent.com.json"))
-    token_path: Path = Field(default=Path("tmp/token_drive.json"))
+    credentials_path: Path = Field(default_factory=_default_credentials_path)
+    token_path: Path = Field(default_factory=_default_token_path)
     target_directory: Path = Field(default=Path("exports"))
     export_format: Literal[
         "pdf",

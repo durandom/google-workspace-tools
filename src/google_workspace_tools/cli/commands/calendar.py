@@ -25,6 +25,7 @@ from ..schemas import (
     CalendarOutput,
 )
 from ..utils import cli_error_handler, print_next_steps
+from ...settings import settings
 
 # Create subcommand app
 calendar_app = typer.Typer(
@@ -35,8 +36,8 @@ calendar_app = typer.Typer(
 
 
 # Common options as defaults
-DEFAULT_CREDENTIALS = Path(".client_secret.googleusercontent.com.json")
-DEFAULT_TOKEN = Path("tmp/token_drive.json")
+DEFAULT_CREDENTIALS = settings.credentials_path
+DEFAULT_TOKEN = settings.token_path
 DEFAULT_OUTPUT = Path("exports/calendar")
 
 

@@ -10,6 +10,7 @@ from loguru import logger
 
 from ..core.config import GoogleDriveExporterConfig
 from ..core.exporter import GoogleDriveExporter
+from ..settings import settings
 
 if TYPE_CHECKING:
     from .formatters import BaseOutputFormatter
@@ -82,7 +83,7 @@ def init_exporter(
     if config is None:
         config = GoogleDriveExporterConfig(
             credentials_path=credentials,
-            token_path=token_path or Path("tmp/token_drive.json"),
+            token_path=token_path or settings.token_path,
         )
 
     return GoogleDriveExporter(config)
