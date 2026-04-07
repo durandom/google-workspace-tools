@@ -289,7 +289,12 @@ def _handle_migrate(token_path: Path, storage_backend: str, vault: str | None) -
 
 def _handle_import(credentials_file: Path, storage_backend: str, vault: str | None) -> None:
     """Handle the import action."""
-    from ...core.storage import CredentialStorage, KeyringCredentialStorage, OnePasswordCredentialStorage
+    from ...core.storage import (
+        CredentialStorage,
+        FileCredentialStorage,
+        KeyringCredentialStorage,
+        OnePasswordCredentialStorage,
+    )
 
     if not credentials_file.exists():
         console.print(f"[red]Client credentials file not found: {credentials_file}[/red]")
@@ -325,15 +330,16 @@ def _handle_import(credentials_file: Path, storage_backend: str, vault: str | No
                 pass
 
         if target_storage is None:
-            console.print("[red]No secure storage backend available[/red]")
-            console.print("[dim]Install 1Password CLI or keyring package[/dim]")
-            raise typer.Exit(1)
+            # Fall back to file storage
+            file_storage = FileCredentialStorage(token_path=Path("tmp/token_drive.json"))
+            target_storage = file_storage
+            target_name = "file (~/.config/gwt/client_secret.json)"
 
-        assert target_storage is not None  # Type narrowing for mypy
         if target_storage.save_client_credentials(client_creds):
             cred_type = "web" if "web" in client_creds else "installed"
             console.print(f"[green]Successfully imported {cred_type} credentials to {target_name}[/green]")
-            console.print("[dim]You can now delete the .client_secret file if desired[/dim]")
+            if not isinstance(target_storage, FileCredentialStorage):
+                console.print("[dim]You can now delete the .client_secret file if desired[/dim]")
         else:
             console.print(f"[red]Failed to save client credentials to {target_name}[/red]")
             raise typer.Exit(1)

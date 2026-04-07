@@ -115,12 +115,20 @@ class FileCredentialStorage(CredentialStorage):
         return True
 
     def save_client_credentials(self, client_credentials: dict[str, Any]) -> bool:
-        """File storage doesn't store client credentials separately.
+        """Save client credentials to the credentials file path.
 
-        Client credentials are handled via the credentials_path parameter.
-        This method is a no-op for file storage.
+        If no credentials_path was provided, defaults to ~/.config/gwt/client_secret.json.
         """
-        return True
+        target = self.credentials_path or (Path.home() / ".config" / "gwt" / "client_secret.json")
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with open(target, "w") as f:
+                json.dump(client_credentials, f, indent=2)
+            logger.debug(f"Client credentials saved to {target}")
+            return True
+        except OSError as e:
+            logger.error(f"Failed to save client credentials to {target}: {e}")
+            return False
 
 
 class KeyringCredentialStorage(CredentialStorage):

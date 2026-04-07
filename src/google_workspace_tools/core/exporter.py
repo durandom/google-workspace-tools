@@ -404,15 +404,19 @@ class GoogleDriveExporter:
                 logger.debug("Loaded client credentials from keyring")
                 return client_creds
 
-        # Fall back to file
-        if self.config.credentials_path.exists():
-            try:
-                with open(self.config.credentials_path) as f:
-                    client_creds = json.load(f)
-                    logger.debug(f"Loaded client credentials from {self.config.credentials_path}")
-                    return dict(client_creds) if isinstance(client_creds, dict) else None
-            except (json.JSONDecodeError, OSError) as e:
-                logger.warning(f"Failed to load credentials file: {e}")
+        # Fall back to file: check configured path, then ~/.config/gwt/client_secret.json
+        for creds_path in [
+            self.config.credentials_path,
+            Path.home() / ".config" / "gwt" / "client_secret.json",
+        ]:
+            if creds_path.exists():
+                try:
+                    with open(creds_path) as f:
+                        client_creds = json.load(f)
+                        logger.debug(f"Loaded client credentials from {creds_path}")
+                        return dict(client_creds) if isinstance(client_creds, dict) else None
+                except (json.JSONDecodeError, OSError) as e:
+                    logger.warning(f"Failed to load credentials file: {e}")
 
         return None
 
