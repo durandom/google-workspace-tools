@@ -29,7 +29,7 @@ from .core.exporter import GoogleDriveExporter
 from .core.filters import CalendarEventFilter, GmailSearchFilter
 from .core.types import DocumentConfig, DocumentType, ExportFormat
 
-__version__ = "0.3.1"
+__version__ = "0.4.0"
 
 __all__ = [
     "GoogleDriveExporter",
