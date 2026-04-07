@@ -594,7 +594,7 @@ requires-dist = [
     { name = "google-api-python-client", specifier = ">=2.176.0" },
     { name = "google-auth-httplib2", specifier = ">=0.2.0" },
     { name = "google-auth-oauthlib", specifier = ">=1.2.2" },
-    { name = "html-to-markdown", specifier = ">=2.14.0" },
+    { name = "html-to-markdown", specifier = ">=2.14.0,<3.0" },
     { name = "keyring", marker = "extra == 'keyring'", specifier = ">=25.0.0" },
     { name = "loguru", specifier = ">=0.7.3" },
     { name = "markitdown", extras = ["xlsx"], specifier = ">=0.1.0" },
