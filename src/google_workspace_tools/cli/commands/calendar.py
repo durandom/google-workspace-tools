@@ -16,6 +16,7 @@ from ... import __version__
 from ...core.config import GoogleDriveExporterConfig
 from ...core.exporter import GoogleDriveExporter
 from ...core.filters import CalendarEventFilter
+from ...settings import settings
 from ..formatters import get_formatter
 from ..output import OutputMode, get_output_mode
 from ..schemas import (
@@ -25,7 +26,6 @@ from ..schemas import (
     CalendarOutput,
 )
 from ..utils import cli_error_handler, print_next_steps
-from ...settings import settings
 
 # Create subcommand app
 calendar_app = typer.Typer(
