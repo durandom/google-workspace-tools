@@ -95,6 +95,96 @@ def _run_local_server_with_redirect_uri(
     return cast(Credentials, flow.credentials)
 
 
+def _nest_gdocs_flat_lists(html: str) -> str:
+    """Pre-process Google Docs HTML to convert flat sibling <ul> lists into properly nested lists.
+
+    Google Docs exports nested lists as flat sibling <ul> elements with CSS class
+    names encoding the nesting level (e.g. lst-kix_XXXXX-0, lst-kix_XXXXX-1).
+    Standard HTML-to-markdown converters expect nested <ul> inside <li> elements.
+    This function restructures the flat lists into proper nesting so that
+    markdown output preserves bullet indentation.
+    """
+    from bs4 import BeautifulSoup, NavigableString, Tag
+
+    soup = BeautifulSoup(html, "html.parser")
+    body = soup.find("body")
+    if not body:
+        return html
+
+    def _list_level(tag: Tag) -> int | None:
+        for cls in tag.get("class", []):
+            m = re.match(r"lst-kix_\w+-(\d+)", cls)
+            if m:
+                return int(m.group(1))
+        return None
+
+    def _is_gdocs_list(tag: Tag) -> bool:
+        return isinstance(tag, Tag) and tag.name == "ul" and _list_level(tag) is not None
+
+    # Collect groups of consecutive Google-Docs list <ul> siblings.
+    # Skip whitespace-only text nodes between <ul> elements so they don't
+    # break a group (Google Docs HTML has newlines between siblings).
+    groups: list[list[Tag]] = []
+    current_group: list[Tag] = []
+    for child in list(body.children):
+        if _is_gdocs_list(child):
+            current_group.append(child)
+        elif isinstance(child, NavigableString) and not child.strip():
+            # Whitespace-only text node — don't break the current group
+            continue
+        else:
+            if current_group:
+                groups.append(current_group)
+                current_group = []
+    if current_group:
+        groups.append(current_group)
+
+    for group in groups:
+        # Flatten into (level, <li>) pairs.
+        items: list[tuple[int, Tag]] = []
+        for ul in group:
+            level = _list_level(ul) or 0
+            for li in ul.find_all("li", recursive=False):
+                items.append((level, li))
+        if not items:
+            continue
+
+        # Re-build as a properly nested <ul> tree.
+        root_ul = soup.new_tag("ul")
+        # Stack entries: (level, <ul> that accepts children at that level)
+        stack: list[tuple[int, Tag]] = [(items[0][0], root_ul)]
+
+        for level, li in items:
+            li_copy = li.extract() if li.parent else li
+            _cur_level, cur_ul = stack[-1]
+
+            if level == _cur_level:
+                cur_ul.append(li_copy)
+            elif level > _cur_level:
+                last_li = cur_ul.find_all("li", recursive=False)
+                if last_li:
+                    new_ul = soup.new_tag("ul")
+                    last_li[-1].append(new_ul)
+                    new_ul.append(li_copy)
+                    stack.append((level, new_ul))
+                else:
+                    cur_ul.append(li_copy)
+            else:
+                while len(stack) > 1 and stack[-1][0] > level:
+                    stack.pop()
+                if stack[-1][0] == level:
+                    stack[-1][1].append(li_copy)
+                else:
+                    stack[-1][1].append(li_copy)
+
+        # Replace the original flat <ul> elements with the single nested tree.
+        group[0].insert_before(root_ul)
+        for ul in group:
+            ul.decompose()
+
+    return str(soup)
+
+
 class GoogleDriveExporter:
     """Export Google Drive documents in various formats with link following capabilities."""
 
@@ -961,6 +1051,7 @@ class GoogleDriveExporter:
             if format_key == "md":
                 # Convert HTML to Markdown and extract inline images
                 html_content = fh.getvalue().decode("utf-8")
+                html_content = _nest_gdocs_flat_lists(html_content)
                 markdown_content, images, _warnings = convert_with_inline_images(html_content)
                 markdown_content = self._unwrap_google_redirect_urls(markdown_content)
 

@@ -1,6 +1,6 @@
 [project]
 name = "google-workspace-tools"
-version = "0.3.1"
+version = "0.4.0"
 description = "Google Workspace document export toolkit with CLI and optional AI agent integration"
 readme = "README.md"
 license = { text = "Apache-2.0" }
