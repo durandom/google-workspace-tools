@@ -550,9 +550,10 @@ wheels = [
 
 [[package]]
 name = "google-workspace-tools"
-version = "0.3.1"
+version = "0.4.0"
 source = { editable = "." }
 dependencies = [
+    { name = "beautifulsoup4" },
     { name = "google-api-python-client" },
     { name = "google-auth-httplib2" },
     { name = "google-auth-oauthlib" },
@@ -591,6 +592,7 @@ docs = [
 [package.metadata]
 requires-dist = [
     { name = "agno", marker = "extra == 'agno'", specifier = ">=2.0.0,<3.0" },
+    { name = "beautifulsoup4", specifier = ">=4.12.0" },
     { name = "google-api-python-client", specifier = ">=2.176.0" },
     { name = "google-auth-httplib2", specifier = ">=0.2.0" },
     { name = "google-auth-oauthlib", specifier = ">=1.2.2" },
