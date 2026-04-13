@@ -121,8 +121,9 @@ class TestNestGdocsFlatLists:
         nested = _nest_gdocs_flat_lists(html)
         md = convert_to_markdown(nested)
         lines = [l for l in md.strip().splitlines() if l.strip()]
-        # Top-level item should have no leading whitespace
-        assert lines[0].lstrip() != lines[0] or lines[0].startswith("*") or lines[0].startswith("-")
+        # Top-level item should have no leading whitespace and start with a list marker
+        assert lines[0].lstrip() == lines[0]
+        assert lines[0].startswith("*") or lines[0].startswith("-")
         # Sub-items should be indented more than their parents
         assert len(lines) == 3
         indent_0 = len(lines[0]) - len(lines[0].lstrip())

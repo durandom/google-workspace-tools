@@ -27,7 +27,9 @@ def mail(
     mode: Annotated[str, typer.Option("--mode", "-m", help="Export mode (thread, individual)")] = "thread",
     output: Annotated[Path | None, typer.Option("--output", "-o", help="Output directory (default: stdout)")] = None,
     depth: Annotated[int, typer.Option("--depth", "-d", help="Link following depth")] = 0,
-    credentials: Annotated[Path, typer.Option("--credentials", "-c", help="Path to credentials file")] = settings.credentials_path,
+    credentials: Annotated[
+        Path, typer.Option("--credentials", "-c", help="Path to credentials file")
+    ] = settings.credentials_path,
     token: Annotated[Path, typer.Option("--token", "-t", help="Path to token file")] = settings.token_path,
 ) -> None:
     """Export Gmail messages to JSON or Markdown.
