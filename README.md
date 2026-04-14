@@ -57,7 +57,7 @@ This installs `gwt` to `~/.local/bin/` (ensure it's in your `$PATH`).
 
 ```bash
 # Authenticate with Google
-gwt auth
+gwt credentials login
 
 # Download a document as Markdown
 gwt download https://docs.google.com/document/d/abc123/edit -f md
@@ -71,8 +71,8 @@ gwt download https://docs.google.com/.../edit -d 2
 # Mirror documents from config file
 gwt mirror sources.txt -o ./mirror
 
-# Show authenticated user
-gwt whoami
+# Show authentication status
+gwt credentials status
 
 # List supported formats
 gwt formats -t spreadsheet
@@ -650,11 +650,16 @@ Cell A1 comment:
    - **Gmail API** (for email export)
    - **Google Calendar API** (for calendar export)
 3. Create OAuth 2.0 credentials (**Web application**, not Desktop)
-   - Add authorized redirect URI: `http://localhost:47621/`
+   - Add authorized JavaScript origin: `http://localhost:8080`
+   - Add authorized redirect URI: `http://localhost:8080/`
 4. Download the credentials JSON file
-5. Run `gwt auth -c /path/to/credentials.json`
+5. Import and authenticate:
+   ```bash
+   gwt credentials import ~/Downloads/client_secret_XXXXX.json
+   gwt credentials login
+   ```
 
-The tool will open a browser for OAuth authentication and save the token for future use.
+The `import` command copies credentials to `~/.config/gwt/client_secret.json`. The `login` command opens a browser for OAuth consent and stores tokens securely.
 
 ### OAuth Scopes
 
@@ -668,17 +673,12 @@ The tool requests the following read-only scopes:
 
 ### Re-authentication After Scope Changes
 
-If you've already authenticated and then upgrade to a version with new scopes (e.g., Gmail/Calendar support), you'll need to re-authenticate:
+When you upgrade to a version with new scopes (e.g., Gmail/Calendar support), the tool automatically detects the mismatch and triggers re-authentication. You can also force it manually:
 
 ```bash
-# Delete existing token
-rm tmp/token_drive.json
-
-# Re-authenticate with new scopes
-gwt auth
+gwt credentials logout
+gwt credentials login
 ```
-
-The tool will automatically detect scope mismatches and prompt for re-authentication when needed.
 
 ## Development
 
